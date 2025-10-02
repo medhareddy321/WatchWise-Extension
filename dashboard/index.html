@@ -1,0 +1,71 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>WatchWise Dashboard</title>
+    <link rel="stylesheet" href="dashboard.css">
+</head>
+<body>
+    <div class="container">
+        <header>
+            <h1>🎯 WatchWise Dashboard</h1>
+            <p class="subtitle">Your YouTube mindful viewing insights</p>
+        </header>
+        
+        <div class="stats-grid">
+            <div class="stat-card">
+                <h3>Today's Videos</h3>
+                <div class="stat-number" id="todayCount">0</div>
+                <div class="stat-change" id="todayChange">+0 from yesterday</div>
+            </div>
+            
+            <div class="stat-card">
+                <h3>Sentiment Balance</h3>
+                <div class="sentiment-chart">
+                    <div class="sentiment-bar">
+                        <div class="positive" id="positiveBar"></div>
+                        <div class="negative" id="negativeBar"></div>
+                    </div>
+                    <div class="sentiment-labels">
+                        <span class="positive-label">😊 Positive: <span id="positiveCount">0</span></span>
+                        <span class="negative-label">😔 Negative: <span id="negativeCount">0</span></span>
+                    </div>
+                </div>
+            </div>
+            
+            <div class="stat-card">
+                <h3>Top Topics</h3>
+                <div class="topics-list" id="topicsList">
+                    <div class="topic-item">
+                        <span class="topic-name">Loading...</span>
+                        <span class="topic-count">0</span>
+                    </div>
+                </div>
+            </div>
+            
+            <div class="stat-card">
+                <h3>Recent Videos</h3>
+                <div class="recent-videos" id="recentVideos">
+                    <div class="video-item">
+                        <span class="video-title">Loading recent videos...</span>
+                        <span class="video-sentiment">😐</span>
+                    </div>
+                </div>
+            </div>
+        </div>
+        
+        <div class="actions">
+            <button id="clearData" class="btn-danger">🗑️ Clear All Data</button>
+            <button id="exportData" class="btn-secondary">📤 Export Data</button>
+            <button id="refreshData" class="btn-primary">🔄 Refresh</button>
+        </div>
+        
+        <div class="privacy-note">
+            <p>🔒 All data is stored locally on your device. No information is sent to external servers.</p>
+        </div>
+    </div>
+    
+    <script src="dashboard.js"></script>
+</body>
+</html>

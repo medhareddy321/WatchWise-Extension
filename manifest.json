@@ -1,0 +1,40 @@
+{
+  "manifest_version": 3,
+  "name": "WatchWise: YouTube Mindful Viewing",
+  "version": "1.0.0",
+  "description": "A mindful viewing companion that analyzes your YouTube consumption patterns and provides insights to help break doomscrolling habits.",
+  
+  "permissions": [
+    "storage",
+    "activeTab"
+  ],
+  
+  "host_permissions": [
+    "https://www.youtube.com/*",
+    "https://api-inference.huggingface.co/*"
+  ],
+  
+  "background": {
+    "service_worker": "background/simple-worker.js"
+  },
+  
+  "content_scripts": [
+    {
+      "matches": ["https://www.youtube.com/*"],
+      "js": ["shared/ml-service.js", "content/simple-monitor.js"],
+      "run_at": "document_end"
+    }
+  ],
+  
+  "action": {
+    "default_popup": "popup/popup.html",
+    "default_title": "WatchWise Dashboard"
+  },
+  
+  "web_accessible_resources": [
+    {
+      "resources": ["dashboard/*"],
+      "matches": ["<all_urls>"]
+    }
+  ]
+}
