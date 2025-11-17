@@ -446,3 +446,93 @@ WatchWise establishes a foundation for privacy-preserving digital wellness tools
 ---
 
 *This technical report documents the WatchWise extension as of December 2024. For the most current information and updates, please refer to the project repository and documentation.*
+
+## Recent Improvements (2025)
+
+### Hugging Face ML API Integration
+- Integrated Hugging Face’s zero-shot and sentiment models for advanced topic and sentiment classification.
+- Users can enable AI-powered analysis by entering their own API key in the extension popup.
+- Supports Hugging Face’s free tier (1000 requests/month), with automatic fallback to local keyword-based analysis if the API is unavailable.
+
+### Enhanced User Experience
+- Added a user-friendly AI setup panel in the popup for API key management.
+- Visual status indicator (“AI: On”/“AI: Off”) to show ML integration status.
+- Direct link to obtain a free API key from Hugging Face.
+
+### Robust Data Storage
+- All video data is now stored via the background script, ensuring reliability even if the content script context is invalidated.
+- Duplicate video entries are prevented by checking video IDs before storage.
+
+### Improved YouTube SPA Support
+- Improved detection of video changes in YouTube’s single-page app environment.
+- Increased delay after URL changes to ensure correct video ID extraction and tracking.
+
+### Documentation & Onboarding
+- Added a comprehensive ML Setup Guide for users.
+- Updated README and technical report to reflect new features and architecture.
+
+---
+
+## 11. Future Scope
+
+As WatchWise continues to evolve, there are numerous opportunities to expand its capabilities and impact. The following features and tools are potential directions for future development:
+
+### Backend: Storage & Processing
+
+- **Cloud Storage & Sync:**  
+  Integrate with Firebase Firestore, Supabase, or AWS S3 to allow users to sync their data across devices and store large exports or user-uploaded data (e.g., Google Takeout files).
+
+- **Scalable Databases:**  
+  Adopt PostgreSQL for structured data or MongoDB for flexible, document-based storage if a backend is introduced.
+
+- **Serverless & Batch Processing:**  
+  Use AWS Lambda or Google Cloud Functions for heavy ML or batch processing. Schedule jobs for nightly/weekly aggregation, trend detection, or report generation.
+
+- **Advanced Analytics:**  
+  Employ ClickHouse or BigQuery for fast, large-scale analytics and Redis for caching frequent queries or ML results.
+
+- **User Authentication & Privacy:**  
+  Implement OAuth (Google, GitHub, etc.) for secure login and end-to-end encryption for any cloud-stored user data.
+
+### Backend: ML & AI
+
+- **Custom Model Training:**  
+  Fine-tune Hugging Face models on YouTube-specific data for improved accuracy. Use active learning to incorporate user feedback and overrides.
+
+- **Expanded ML Features:**  
+  Add toxicity/abuse detection, emotion detection, and personalized recommendations based on user patterns.
+
+- **Hugging Face Inference Endpoints or ONNX Runtime:**  
+  Host custom models for more control and higher rate limits, or run optimized models on your own backend for speed and privacy.
+
+### Frontend: User Experience & Analytics
+
+- **Richer Dashboard:**  
+  Visualize time-of-day, weekly, and monthly trends. Show streaks, milestones, and allow users to customize their analytics dashboard.
+
+- **Explainability & Transparency:**  
+  Highlight trigger words, display confidence bars, and show alternative labels for each classification.
+
+- **User Controls:**  
+  Allow users to create custom categories, set their own nudge/warning thresholds, and export/import their data.
+
+- **Notifications & Nudges:**  
+  Implement browser notifications for breaks or positive streaks, and more interactive on-page overlays.
+
+- **Accessibility & Internationalization:**  
+  Add dark mode, high-contrast themes, and multi-language support.
+
+### Other Advanced Features
+
+- **Social/Community Features:**  
+  Enable anonymous sharing of stats, community benchmarks, and privacy-respecting leaderboards.
+
+- **Mobile & Cross-Platform:**  
+  Explore mobile browser extension support or a desktop app (Electron) for power users.
+
+- **Integrations:**  
+  Sync with wellness apps (Apple Health, Google Fit), calendar integration, or other platforms for holistic digital wellness.
+
+---
+
+These future enhancements will help WatchWise evolve into a robust, scalable, and user-centric platform for mindful media consumption, privacy, and digital well-being.
