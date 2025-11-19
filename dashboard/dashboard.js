@@ -3,6 +3,8 @@ document.addEventListener('DOMContentLoaded', function() {
     // Get DOM elements
     const todayCountEl = document.getElementById('todayCount');
     const todayChangeEl = document.getElementById('todayChange');
+    const totalWatchTimeEl = document.getElementById('totalWatchTime');
+    const todayWatchTimeEl = document.getElementById('todayWatchTime');
     const positiveBarEl = document.getElementById('positiveBar');
     const negativeBarEl = document.getElementById('negativeBar');
     const positiveCountEl = document.getElementById('positiveCount');
@@ -32,6 +34,9 @@ document.addEventListener('DOMContentLoaded', function() {
             // Update today's count
             todayCountEl.textContent = todayStats.count;
             
+            // Update watch time
+            updateWatchTimeDisplay(videos, todayStats);
+            
             // Update sentiment visualization
             updateSentimentDisplay(todayStats);
             
@@ -45,6 +50,49 @@ document.addEventListener('DOMContentLoaded', function() {
         } catch (error) {
             console.error('Error loading dashboard data:', error);
         }
+    }
+
+    // Format time from milliseconds to readable format
+    function formatWatchTime(ms) {
+        if (!ms || ms === 0) return '0s';
+        
+        const seconds = Math.floor(ms / 1000);
+        const minutes = Math.floor(seconds / 60);
+        const hours = Math.floor(minutes / 60);
+        const days = Math.floor(hours / 24);
+        
+        if (days > 0) {
+            return `${days}d ${hours % 24}h`;
+        } else if (hours > 0) {
+            return `${hours}h ${minutes % 60}m`;
+        } else if (minutes > 0) {
+            return `${minutes}m ${seconds % 60}s`;
+        } else {
+            return `${seconds}s`;
+        }
+    }
+
+    // Update watch time display
+    function updateWatchTimeDisplay(videos, todayStats) {
+        // Calculate total watch time from all videos
+        const totalWatchTime = videos.reduce((total, video) => {
+            return total + (video.watchDurationMs || 0);
+        }, 0);
+        
+        // Calculate today's watch time (videos watched today)
+        const today = new Date().toDateString();
+        const todayWatchTime = videos
+            .filter(video => {
+                const videoDate = new Date(video.timestamp);
+                return videoDate.toDateString() === today;
+            })
+            .reduce((total, video) => {
+                return total + (video.watchDurationMs || 0);
+            }, 0);
+        
+        // Update display
+        totalWatchTimeEl.textContent = formatWatchTime(totalWatchTime);
+        todayWatchTimeEl.textContent = `Today: ${formatWatchTime(todayWatchTime)}`;
     }
 
     // Update sentiment display
@@ -88,42 +136,39 @@ document.addEventListener('DOMContentLoaded', function() {
         `).join('');
     }
 
-    // Update recent videos display
+    // Update recent videos display - show all videos from today
     function updateRecentVideos(videos) {
         if (videos.length === 0) {
             recentVideosEl.innerHTML = '<div class="video-item"><span class="video-title">No videos tracked yet</span><span class="video-sentiment">😐</span></div>';
             return;
         }
 
-        // Get unique videos (by video ID) and sort by timestamp
-        const uniqueVideos = [];
-        const seenIds = new Set();
-        
-        // Process videos in reverse chronological order to get most recent unique videos
-        videos.slice().reverse().forEach(video => {
-            if (!seenIds.has(video.id)) {
-                seenIds.add(video.id);
-                uniqueVideos.push(video);
-            }
+        // Filter videos from today
+        const today = new Date().toDateString();
+        const todayVideos = videos.filter(video => {
+            const videoDate = new Date(video.timestamp);
+            return videoDate.toDateString() === today;
         });
 
-        // Get last 5 unique videos
-        const recentVideos = uniqueVideos.slice(0, 5);
-
-        if (recentVideos.length === 0) {
-            recentVideosEl.innerHTML = '<div class="video-item"><span class="video-title">No unique videos tracked yet</span><span class="video-sentiment">😐</span></div>';
+        if (todayVideos.length === 0) {
+            recentVideosEl.innerHTML = '<div class="video-item"><span class="video-title">No videos watched today</span><span class="video-sentiment">😐</span></div>';
             return;
         }
 
-        recentVideosEl.innerHTML = recentVideos.map(video => {
+        // Sort by timestamp (most recent first)
+        todayVideos.sort((a, b) => b.timestamp - a.timestamp);
+
+        recentVideosEl.innerHTML = todayVideos.map(video => {
             const sentimentEmoji = getSentimentEmoji(video.sentiment);
             const topicEmoji = getTopicEmoji(video.topic);
-            const shortTitle = video.title.length > 45 ? video.title.substring(0, 45) + '...' : video.title;
+            const shortTitle = video.title.length > 40 ? video.title.substring(0, 40) + '...' : video.title;
+            const watchTime = formatWatchTime(video.watchDurationMs || 0);
             
             return `
                 <div class="video-item">
                     <span class="video-title" title="${video.title}">${shortTitle}</span>
                     <span class="video-info">
+                        <span class="video-watch-time" title="Watch time">${watchTime}</span>
                         <span class="video-sentiment">${sentimentEmoji}</span>
                         <span class="video-topic">${topicEmoji}</span>
                     </span>

@@ -33,7 +33,8 @@
             <div class="setup-card">
                 <h3>🤖 Enable AI Analysis</h3>
                 <p>Get better sentiment and topic analysis with Hugging Face AI</p>
-                <input type="text" id="apiKeyInput" placeholder="Enter Hugging Face API key" />
+                <label for="apiKeyInput" class="sr-only">Hugging Face API Key</label>
+                <input type="text" id="apiKeyInput" name="apiKey" placeholder="Enter Hugging Face API key" autocomplete="off" />
                 <button id="saveApiKey" class="btn-primary">Save API Key</button>
                 <p class="help-text">
                     <a href="https://huggingface.co/settings/tokens" target="_blank">Get free API key</a> 

@@ -136,8 +136,28 @@ header h1 {
 }
 
 .recent-videos {
-    max-height: 200px;
+    max-height: 400px;
     overflow-y: auto;
+    overflow-x: hidden;
+}
+
+/* Custom scrollbar for recent videos */
+.recent-videos::-webkit-scrollbar {
+    width: 8px;
+}
+
+.recent-videos::-webkit-scrollbar-track {
+    background: rgba(255, 255, 255, 0.1);
+    border-radius: 4px;
+}
+
+.recent-videos::-webkit-scrollbar-thumb {
+    background: rgba(255, 255, 255, 0.3);
+    border-radius: 4px;
+}
+
+.recent-videos::-webkit-scrollbar-thumb:hover {
+    background: rgba(255, 255, 255, 0.5);
 }
 
 .video-item {
@@ -165,6 +185,16 @@ header h1 {
     display: flex;
     gap: 8px;
     align-items: center;
+}
+
+.video-watch-time {
+    font-size: 0.75rem;
+    background: rgba(255, 255, 255, 0.15);
+    padding: 2px 6px;
+    border-radius: 4px;
+    font-weight: 500;
+    min-width: 40px;
+    text-align: center;
 }
 
 .video-sentiment, .video-topic {
