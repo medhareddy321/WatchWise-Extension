@@ -19,10 +19,14 @@ document.addEventListener('DOMContentLoaded', function() {
     // Load stats from storage
     async function loadStats() {
         try {
-            const result = await chrome.storage.local.get(['todayStats', 'isTracking']);
+            const result = await chrome.storage.local.get(['todayStats', 'isTracking', 'videos']);
+            const videos = result.videos || [];
+            const derivedStats = computeTodayStats(videos);
             
             // Update today's count
-            const todayStats = result.todayStats || { count: 0, positive: 0, negative: 0 };
+            const todayStats = derivedStats.count > 0 || videos.length > 0
+                ? derivedStats
+                : (result.todayStats || { count: 0, positive: 0, negative: 0 });
             todayCountEl.textContent = todayStats.count;
 
             // Update sentiment bar
@@ -51,6 +55,27 @@ document.addEventListener('DOMContentLoaded', function() {
         } catch (error) {
             console.error('Error loading stats:', error);
         }
+    }
+
+    function computeTodayStats(videos) {
+        const stats = { count: 0, positive: 0, negative: 0 };
+        const todayKey = new Date().toDateString();
+
+        videos.forEach(video => {
+            if (!video || !video.timestamp) return;
+            const videoDate = new Date(video.timestamp).toDateString();
+            if (videoDate !== todayKey) return;
+
+            stats.count++;
+            const sentiment = (video.parentOverrides && video.parentOverrides.sentiment) || video.sentiment || 'neutral';
+            if (sentiment === 'positive') {
+                stats.positive++;
+            } else if (sentiment === 'negative') {
+                stats.negative++;
+            }
+        });
+
+        return stats;
     }
 
     // Open dashboard in new tab

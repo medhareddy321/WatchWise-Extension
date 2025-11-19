@@ -2,7 +2,7 @@
 // - Tracks normal videos + Shorts
 // - Tracks actual watch time (handles pause/resume)
 // - Detects autoplay / suggested videos (SPA navigation)
-// - Uses ML (Hugging Face) with fallback keyword logic
+// - Uses local ML heuristics (no remote calls)
 // - Sends data to background (simple-worker) via chrome.runtime.sendMessage
 // - Shows simple nudges after multiple negative videos
 
@@ -130,6 +130,87 @@ function extractShortsInfo() {
     return null;
 }
 
+function extractShortsHashtags() {
+    const activeRenderer = getActiveShortRenderer();
+    if (!activeRenderer) return [];
+
+    return collectHashtagsFromContainers([activeRenderer]);
+}
+
+function extractStandardVideoDescription() {
+    const selectors = [
+        '#description ytd-text-inline-expander #description-inline-expander',
+        '#description ytd-text-inline-expander yt-formatted-string',
+        '#description #description-inline-expander',
+        'ytd-watch-metadata #description',
+        '#description'
+    ];
+
+    for (const selector of selectors) {
+        const element = document.querySelector(selector);
+        if (element && element.textContent.trim()) {
+            return filterOutSoundtrack(element.textContent.trim());
+        }
+    }
+
+    const metaDescription = document.querySelector('meta[name="description"]');
+    if (metaDescription && metaDescription.getAttribute('content')) {
+        return filterOutSoundtrack(metaDescription.getAttribute('content'));
+    }
+
+    return null;
+}
+
+function extractStandardVideoHashtags() {
+    const containers = [
+        document.querySelector('#description'),
+        document.querySelector('ytd-watch-metadata'),
+        document.querySelector('#title')
+    ].filter(Boolean);
+
+    return collectHashtagsFromContainers(containers);
+}
+
+function collectHashtagsFromContainers(containers) {
+    const tags = new Set();
+
+    containers.forEach(container => {
+        if (!container) return;
+        container.querySelectorAll('a[href*="/hashtag/"]').forEach(link => {
+            const text = link.textContent.trim();
+            if (!text) return;
+            const normalized = text.startsWith('#') ? text : `#${text}`;
+            tags.add(normalized);
+        });
+    });
+
+    return Array.from(tags);
+}
+
+function buildRawTextFromParts(parts) {
+    return parts
+        .flatMap(part => {
+            if (!part) return [];
+            if (Array.isArray(part)) {
+                return part.map(entry => entry && entry.trim()).filter(Boolean);
+            }
+            const text = String(part).trim();
+            return text ? [text] : [];
+        })
+        .join(' | ');
+}
+
+function snapshotVideoInfo(info) {
+    if (!info) return null;
+    return {
+        ...info,
+        hashtags: info.hashtags ? [...info.hashtags] : [],
+        parentOverrides: info.parentOverrides
+            ? { ...info.parentOverrides }
+            : { sentiment: null, topic: null }
+    };
+}
+
 function getVideoInfo() {
     console.log('🎯 WatchWise: Getting video info...');
 
@@ -138,18 +219,22 @@ function getVideoInfo() {
     const isShort = window.location.pathname.includes('/shorts/');
 
     let title = '';
+    let description = '';
+    let hashtags = [];
 
     if (isShort) {
         // For Shorts, extract description and format as "YT Shorts - [description]"
         console.log('🎯 WatchWise: Detected Short, extracting description...');
-        const description = extractShortsInfo();
+        const shortDescription = extractShortsInfo();
+        description = shortDescription || '';
+        hashtags = extractShortsHashtags();
         
-        if (description && description.length > 0) {
+        if (shortDescription && shortDescription.length > 0) {
             // Format as "YT Shorts - [description]" (truncate if too long)
             const maxLength = 100; // Reasonable length for title
-            const shortDesc = description.length > maxLength 
-                ? description.substring(0, maxLength).trim() + '...'
-                : description;
+            const shortDesc = shortDescription.length > maxLength 
+                ? shortDescription.substring(0, maxLength).trim() + '...'
+                : shortDescription;
             title = `YT Shorts - ${shortDesc}`;
             console.log('🎯 WatchWise: Formatted Shorts title:', title);
         }
@@ -173,19 +258,22 @@ function getVideoInfo() {
                 }
             }
         }
+
+        description = extractStandardVideoDescription() || '';
+        hashtags = extractStandardVideoHashtags();
     }
 
     // Fallback if nothing found
     if (!title || title.length === 0) {
         if (isShort && videoId) {
             // For Shorts, try to get description and format as "YT Shorts - [description]"
-            const description = extractShortsInfo();
-            if (description && description.length > 0) {
+            const altDescription = extractShortsInfo();
+            if (altDescription && altDescription.length > 0) {
                 // Format as "YT Shorts - [description]" (truncate if too long)
                 const maxLength = 100; // Reasonable length for title
-                const shortDesc = description.length > maxLength 
-                    ? description.substring(0, maxLength).trim() + '...'
-                    : description;
+                const shortDesc = altDescription.length > maxLength 
+                    ? altDescription.substring(0, maxLength).trim() + '...'
+                    : altDescription;
                 title = `YT Shorts - ${shortDesc}`;
                 console.log('🎯 WatchWise: Using description for Shorts title:', title);
             } else {
@@ -198,41 +286,22 @@ function getVideoInfo() {
         }
     }
 
+    const rawText = buildRawTextFromParts([title, description, hashtags]);
     console.log('🎯 WatchWise: URL:', url);
     console.log('🎯 WatchWise: Video ID:', videoId);
     console.log('🎯 WatchWise: Is Short:', isShort);
     console.log('🎯 WatchWise: Title:', title || '(empty)');
 
-    return { title, videoId, url, isShort };
+    return { title, videoId, url, isShort, description, hashtags, rawText };
 }
 
-// ----- ML-powered sentiment & topic (with fallback) -----
+// ----- Local ML helpers (with fallback heuristics) -----
 
-async function getSentiment(title) {
-    try {
-        if (window.mlService && window.mlService.hasApiKey()) {
-            console.log('🤖 Using ML sentiment analysis');
-            const analysis = await window.mlService.analyzeSentiment(title);
-            return {
-                sentiment: analysis.sentiment,
-                confidence: analysis.confidence,
-                method: 'ml'
-            };
-        } else {
-            console.log('🤖 ML service not available, using fallback sentiment');
-            return getSentimentFallback(title);
-        }
-    } catch (error) {
-        console.error('🤖 ML sentiment analysis failed:', error);
-        return getSentimentFallback(title);
-    }
-}
-
-function getSentimentFallback(title) {
+function getSentimentFallback(text) {
     const positiveWords = ['amazing', 'awesome', 'great', 'love', 'best', 'incredible', 'wonderful', 'fantastic', 'excellent', 'perfect', 'beautiful', 'happy'];
     const negativeWords = ['terrible', 'awful', 'hate', 'worst', 'horrible', 'disgusting', 'annoying', 'stupid', 'bad', 'sucks', 'angry', 'sad'];
 
-    const lowerTitle = title.toLowerCase();
+    const lowerTitle = (text || '').toLowerCase();
     let positiveScore = 0;
     let negativeScore = 0;
 
@@ -262,29 +331,8 @@ function getSentimentFallback(title) {
     };
 }
 
-async function getTopic(title) {
-    try {
-        if (window.mlService && window.mlService.hasApiKey()) {
-            console.log('🤖 Using ML topic classification');
-            const analysis = await window.mlService.analyzeTopic(title);
-            return {
-                topic: analysis.topic,
-                confidence: analysis.confidence,
-                alternatives: analysis.alternatives,
-                method: 'ml'
-            };
-        } else {
-            console.log('🤖 ML service not available, using fallback topic');
-            return getTopicFallback(title);
-        }
-    } catch (error) {
-        console.error('🤖 ML topic classification failed:', error);
-        return getTopicFallback(title);
-    }
-}
-
-function getTopicFallback(title) {
-    const lowerTitle = title.toLowerCase();
+function getTopicFallback(text) {
+    const lowerTitle = (text || '').toLowerCase();
 
     if (lowerTitle.includes('music') || lowerTitle.includes('song') || lowerTitle.includes('album') ||
         lowerTitle.includes('artist') || lowerTitle.includes('band') || lowerTitle.includes('concert') ||
@@ -309,6 +357,31 @@ function getTopicFallback(title) {
     return { topic: 'other', confidence: 0.5, alternatives: [], method: 'fallback' };
 }
 
+async function analyzeContentLocally(text, videoInfo) {
+    const fallbackText = text || videoInfo?.title || '';
+
+    if (window.localML && typeof window.localML.analyzeContent === 'function') {
+        try {
+            console.log('🤖 Using localML analysis');
+            return await window.localML.analyzeContent(fallbackText);
+        } catch (error) {
+            console.error('🤖 localML analysis failed:', error);
+        }
+    }
+
+    console.log('🤖 localML unavailable, using fallback heuristics');
+    const fallbackSentiment = getSentimentFallback(fallbackText);
+    const fallbackTopic = getTopicFallback(fallbackText);
+
+    return {
+        sentiment: fallbackSentiment.sentiment,
+        sentimentConfidence: fallbackSentiment.confidence,
+        topic: fallbackTopic.topic,
+        topicConfidence: fallbackTopic.confidence,
+        topicAlternatives: fallbackTopic.alternatives || []
+    };
+}
+
 // ----- Core: process + store video -----
 
 async function processVideoAsync(videoInfo, watchDurationMs) {
@@ -326,63 +399,31 @@ async function processVideoAsync(videoInfo, watchDurationMs) {
 
         console.log('🤖 Processing video with ML analysis:', title, '(isShort:', videoInfo.isShort, ')');
 
-        // Run ML analysis for all videos with meaningful titles
-        // Shorts now have titles from description/hashtags/page title, so classify them too
-        let sentimentAnalysis, topicAnalysis;
-        
-        // Only use defaults if title is clearly a fallback (starts with "YouTube Short" or "Video" and has video ID in parentheses)
-        const isFallbackTitle =
-            title.startsWith('YouTube Short (') ||
-            title.startsWith('YT Shorts -') ||
-            title.startsWith('Video (');
-        
-        if (isFallbackTitle || title.length < 5) {
-            // No meaningful title - use defaults
-            console.log('🤖 No meaningful title found, using default classification');
-            sentimentAnalysis = { sentiment: 'neutral', confidence: 0.5, method: 'default' };
-            topicAnalysis = { 
-                topic: videoInfo.isShort ? 'entertainment' : 'other', 
-                confidence: 0.5, 
-                alternatives: [], 
-                method: 'default' 
-            };
-        } else {
-            // Run ML in parallel for videos with meaningful titles (including Shorts with description/hashtags)
-            console.log('🤖 Running ML analysis on title:', title.substring(0, 50) + '...');
-            const [sentimentResult, topicResult] = await Promise.allSettled([
-                getSentiment(title),
-                getTopic(title)
-            ]);
-
-            sentimentAnalysis = sentimentResult.status === 'fulfilled'
-                ? sentimentResult.value
-                : getSentimentFallback(title);
-
-            if (sentimentResult.status === 'rejected') {
-                console.warn('🤖 Sentiment analysis failed, using fallback:', sentimentResult.reason);
-            }
-
-            topicAnalysis = topicResult.status === 'fulfilled'
-                ? topicResult.value
-                : getTopicFallback(title);
-
-            if (topicResult.status === 'rejected') {
-                console.warn('🤖 Topic analysis failed, using fallback:', topicResult.reason);
-            }
-        }
+        const combinedText = videoInfo.rawText || buildRawTextFromParts([
+            title,
+            videoInfo.description,
+            videoInfo.hashtags
+        ]);
+        const analysisText = combinedText || title || videoInfo.url || '';
+        const analysis = await analyzeContentLocally(analysisText, videoInfo);
 
         const videoData = {
             id: videoInfo.videoId,
             title: title, // Use the ensured title (with fallback if needed)
             url: videoInfo.url,
             isShort: videoInfo.isShort,
-            sentiment: sentimentAnalysis.sentiment,
-            sentimentConfidence: sentimentAnalysis.confidence,
-            sentimentMethod: sentimentAnalysis.method,
-            topic: topicAnalysis.topic,
-            topicConfidence: topicAnalysis.confidence,
-            topicAlternatives: topicAnalysis.alternatives,
-            topicMethod: topicAnalysis.method,
+            description: videoInfo.description || null,
+            hashtags: videoInfo.hashtags || [],
+            rawText: analysisText,
+            sentiment: analysis.sentiment || 'neutral',
+            sentimentConfidence: analysis.sentimentConfidence ?? 0.5,
+            topic: analysis.topic || (videoInfo.isShort ? 'entertainment' : 'other'),
+            topicConfidence: analysis.topicConfidence ?? 0.5,
+            topicAlternatives: analysis.topicAlternatives || [],
+            parentOverrides: {
+                sentiment: videoInfo.parentOverrides?.sentiment || null,
+                topic: videoInfo.parentOverrides?.topic || null
+            },
             watchDurationMs: watchDurationMs,
             timestamp: Date.now()
         };
@@ -402,13 +443,22 @@ async function processVideoAsync(videoInfo, watchDurationMs) {
             title: fallbackTitle,
             url: videoInfo.url,
             isShort: videoInfo.isShort,
+            description: videoInfo.description || null,
+            hashtags: videoInfo.hashtags || [],
+            rawText: buildRawTextFromParts([
+                fallbackTitle,
+                videoInfo.description,
+                videoInfo.hashtags
+            ]),
             sentiment: 'neutral',
             sentimentConfidence: 0.5,
-            sentimentMethod: 'error',
             topic: videoInfo.isShort ? 'entertainment' : 'other',
             topicConfidence: 0.5,
             topicAlternatives: [],
-            topicMethod: 'error',
+            parentOverrides: {
+                sentiment: videoInfo.parentOverrides?.sentiment || null,
+                topic: videoInfo.parentOverrides?.topic || null
+            },
             watchDurationMs: watchDurationMs,
             timestamp: Date.now()
         };
@@ -616,7 +666,7 @@ function checkVideo() {
             if (watchDuration >= minWatchTime) {
                 console.log('🎯 WatchWise: Storing previous video (watched long enough)');
                 // Use the snapshot of previous video info to avoid DOM race conditions
-                const prevVideoInfo = { ...currentVideoInfo };
+                const prevVideoInfo = snapshotVideoInfo(currentVideoInfo);
                 processVideoAsync(prevVideoInfo, watchDuration);
             } else {
                 console.log('🎯 WatchWise: Skipping previous video (not watched long enough)');
@@ -629,7 +679,15 @@ function checkVideo() {
             videoId: videoInfo.videoId,
             title: videoInfo.title,
             url: videoInfo.url,
-            isShort: videoInfo.isShort
+            isShort: videoInfo.isShort,
+            description: videoInfo.description || '',
+            hashtags: videoInfo.hashtags || [],
+            rawText: videoInfo.rawText || buildRawTextFromParts([
+                videoInfo.title,
+                videoInfo.description,
+                videoInfo.hashtags
+            ]),
+            parentOverrides: { sentiment: null, topic: null }
         };
         currentVideoElement = findActiveVideoElement(videoInfo.isShort);
         totalWatchTime = 0;
@@ -648,6 +706,20 @@ function checkVideo() {
             console.log('🎯 WatchWise: Same video ID but title changed, updating info');
             currentVideoInfo.title = videoInfo.title;
             currentVideoInfo.url = videoInfo.url;
+        }
+        if (currentVideoInfo && videoInfo.description && videoInfo.description !== currentVideoInfo.description) {
+            currentVideoInfo.description = videoInfo.description;
+        }
+        if (currentVideoInfo && videoInfo.hashtags && videoInfo.hashtags.length > 0) {
+            const merged = new Set([...(currentVideoInfo.hashtags || []), ...videoInfo.hashtags]);
+            currentVideoInfo.hashtags = Array.from(merged);
+        }
+        if (currentVideoInfo) {
+            currentVideoInfo.rawText = buildRawTextFromParts([
+                currentVideoInfo.title,
+                currentVideoInfo.description,
+                currentVideoInfo.hashtags
+            ]);
         }
         if (!currentVideoElement || !document.contains(currentVideoElement)) {
             currentVideoElement = findActiveVideoElement(videoInfo.isShort);
@@ -687,7 +759,7 @@ function storeCurrentVideoIfReady() {
 
     if (currentWatchTime >= minWatchTime) {
         console.log('🎯 WatchWise: Storing current video (watched long enough)');
-        const videoInfo = { ...currentVideoInfo };
+        const videoInfo = snapshotVideoInfo(currentVideoInfo);
         processVideoAsync(videoInfo, currentWatchTime);
     } else {
         console.log('🎯 WatchWise: Not storing current video yet (watch time below threshold)');
@@ -760,7 +832,7 @@ function startMonitoring() {
                 if (currentVideoId && currentVideoInfo) {
                     const watchDuration = computeCurrentWatchTime();
                     if (watchDuration >= minWatchTime) {
-                        const prevVideoInfo = { ...currentVideoInfo };
+                        const prevVideoInfo = snapshotVideoInfo(currentVideoInfo);
                         processVideoAsync(prevVideoInfo, watchDuration);
                     }
                 }

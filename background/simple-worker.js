@@ -13,6 +13,49 @@ function getDefaultTodayStats() {
   };
 }
 
+function getEffectiveSentiment(video) {
+  return (
+    (video.parentOverrides && video.parentOverrides.sentiment) ||
+    video.sentiment ||
+    'neutral'
+  );
+}
+
+function getEffectiveTopic(video, isShort) {
+  return (
+    (video.parentOverrides && video.parentOverrides.topic) ||
+    video.topic ||
+    (isShort ? 'entertainment' : 'other')
+  );
+}
+
+function computeTodayStatsFromVideos(videos) {
+  const stats = getDefaultTodayStats();
+  const todayKey = new Date().toDateString();
+
+  videos.forEach(video => {
+    if (!video || !video.timestamp) return;
+    const videoDate = new Date(video.timestamp).toDateString();
+    if (videoDate !== todayKey) return;
+
+    stats.count++;
+
+    const sentiment = getEffectiveSentiment(video);
+    if (sentiment === 'positive') {
+      stats.positive++;
+    } else if (sentiment === 'negative') {
+      stats.negative++;
+    }
+
+    const topic = getEffectiveTopic(video, video.isShort);
+    if (topic) {
+      stats.topics[topic] = (stats.topics[topic] || 0) + 1;
+    }
+  });
+
+  return stats;
+}
+
 // Initialize storage only if it doesn't already exist
 async function initializeStorageIfNeeded() {
   const result = await chrome.storage.local.get([
@@ -85,9 +128,11 @@ async function handleGetStats(sendResponse) {
       'isTracking'
     ]);
 
-    const todayStats = result.todayStats || getDefaultTodayStats();
     const videos = result.videos || [];
+    const todayStats = computeTodayStatsFromVideos(videos);
     const isTracking = result.isTracking !== false; // default true
+
+    await chrome.storage.local.set({ todayStats });
 
     sendResponse({
       success: true,
@@ -124,10 +169,9 @@ async function handleClearData(sendResponse) {
 // 3) Store a video and update todayStats
 async function handleStoreVideo(videoData, sendResponse) {
   try {
-    const result = await chrome.storage.local.get(['videos', 'todayStats']);
+    const result = await chrome.storage.local.get(['videos']);
 
     const videos = result.videos || [];
-    const todayStats = result.todayStats || getDefaultTodayStats();
 
     // Prevent duplicates by video id
     if (videos.some(v => v.id === videoData.id)) {
@@ -139,21 +183,7 @@ async function handleStoreVideo(videoData, sendResponse) {
     // Add video
     videos.push(videoData);
 
-    // Update stats
-    todayStats.count++;
-
-    if (videoData.sentiment === 'positive') {
-      todayStats.positive++;
-    } else if (videoData.sentiment === 'negative') {
-      todayStats.negative++;
-    }
-
-    if (videoData.topic) {
-      if (!todayStats.topics[videoData.topic]) {
-        todayStats.topics[videoData.topic] = 0;
-      }
-      todayStats.topics[videoData.topic]++;
-    }
+    const todayStats = computeTodayStatsFromVideos(videos);
 
     await chrome.storage.local.set({ videos, todayStats });
 

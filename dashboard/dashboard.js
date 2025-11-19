@@ -29,7 +29,7 @@ document.addEventListener('DOMContentLoaded', function() {
         try {
             const result = await chrome.storage.local.get(['videos', 'todayStats']);
             const videos = result.videos || [];
-            const todayStats = result.todayStats || { count: 0, positive: 0, negative: 0, topics: {} };
+            const todayStats = computeTodayStats(videos);
 
             // Update today's count
             todayCountEl.textContent = todayStats.count;
@@ -93,6 +93,33 @@ document.addEventListener('DOMContentLoaded', function() {
         // Update display
         totalWatchTimeEl.textContent = formatWatchTime(totalWatchTime);
         todayWatchTimeEl.textContent = `Today: ${formatWatchTime(todayWatchTime)}`;
+    }
+
+    function computeTodayStats(videos) {
+        const stats = { count: 0, positive: 0, negative: 0, topics: {} };
+        const todayKey = new Date().toDateString();
+
+        videos.forEach(video => {
+            if (!video || !video.timestamp) return;
+            const videoDate = new Date(video.timestamp).toDateString();
+            if (videoDate !== todayKey) return;
+
+            stats.count++;
+
+            const sentiment = getVideoSentiment(video);
+            if (sentiment === 'positive') {
+                stats.positive++;
+            } else if (sentiment === 'negative') {
+                stats.negative++;
+            }
+
+            const topic = getVideoTopic(video);
+            if (topic) {
+                stats.topics[topic] = (stats.topics[topic] || 0) + 1;
+            }
+        });
+
+        return stats;
     }
 
     // Update sentiment display
@@ -159,8 +186,10 @@ document.addEventListener('DOMContentLoaded', function() {
         todayVideos.sort((a, b) => b.timestamp - a.timestamp);
 
         recentVideosEl.innerHTML = todayVideos.map(video => {
-            const sentimentEmoji = getSentimentEmoji(video.sentiment);
-            const topicEmoji = getTopicEmoji(video.topic);
+            const sentiment = getVideoSentiment(video);
+            const topic = getVideoTopic(video);
+            const sentimentEmoji = getSentimentEmoji(sentiment);
+            const topicEmoji = getTopicEmoji(topic);
             const shortTitle = video.title.length > 40 ? video.title.substring(0, 40) + '...' : video.title;
             const watchTime = formatWatchTime(video.watchDurationMs || 0);
             
@@ -175,6 +204,16 @@ document.addEventListener('DOMContentLoaded', function() {
                 </div>
             `;
         }).join('');
+    }
+
+    function getVideoSentiment(video) {
+        if (!video) return 'neutral';
+        return (video.parentOverrides && video.parentOverrides.sentiment) || video.sentiment || 'neutral';
+    }
+
+    function getVideoTopic(video) {
+        if (!video) return 'other';
+        return (video.parentOverrides && video.parentOverrides.topic) || video.topic || 'other';
     }
 
     // Get sentiment emoji
