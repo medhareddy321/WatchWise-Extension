@@ -176,16 +176,20 @@ function collectHashtagsFromContainers(containers) {
 
     containers.forEach(container => {
         if (!container) return;
+
+        // Only select real YouTube hashtag links
         container.querySelectorAll('a[href*="/hashtag/"]').forEach(link => {
             const text = link.textContent.trim();
-            if (!text) return;
-            const normalized = text.startsWith('#') ? text : `#${text}`;
-            tags.add(normalized);
+
+            if (!text || !text.startsWith('#')) return;
+
+            tags.add(text);
         });
     });
 
     return Array.from(tags);
 }
+
 
 function buildRawTextFromParts(parts) {
     return parts
@@ -199,7 +203,7 @@ function buildRawTextFromParts(parts) {
         })
         .join(' | ');
 }
-
+// Takes the video info and makes a safe copy so that nothing breaks when the page changes.
 function snapshotVideoInfo(info) {
     if (!info) return null;
     return {
