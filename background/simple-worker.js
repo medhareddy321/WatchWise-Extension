@@ -111,6 +111,10 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
       handleExportData(sendResponse);
       return true; // async
 
+    case 'hfFetch':
+      handleHFFetch(message, sendResponse);
+      return true; // async
+
     default:
       // Unknown action – just ignore
       return false;
@@ -229,6 +233,25 @@ async function handleExportData(sendResponse) {
     sendResponse({ success: true });
   } catch (error) {
     console.error('[exportData] Error:', error);
+    sendResponse({ success: false, error: error.message });
+  }
+}
+
+// 5) Proxy Hugging Face fetches to avoid CORS from content scripts
+async function handleHFFetch(message, sendResponse) {
+  try {
+    const { url, options } = message;
+    const resp = await fetch(url, options);
+    const text = await resp.text();
+
+    sendResponse({
+      success: true,
+      ok: resp.ok,
+      status: resp.status,
+      text
+    });
+  } catch (error) {
+    console.error('[hfFetch] Error:', error);
     sendResponse({ success: false, error: error.message });
   }
 }

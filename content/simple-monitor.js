@@ -364,16 +364,32 @@ function getTopicFallback(text) {
 async function analyzeContentLocally(text, videoInfo) {
     const fallbackText = text || videoInfo?.title || '';
 
-    if (window.localML && typeof window.localML.analyzeContent === 'function') {
-        try {
-            console.log('🤖 Using localML analysis');
-            return await window.localML.analyzeContent(fallbackText);
-        } catch (error) {
-            console.error('🤖 localML analysis failed:', error);
+    // First try Hugging Face (requires API key)
+    if (window.mlService && typeof window.mlService.analyzeContent === 'function') {
+        const hasKey = typeof window.mlService.hasApiKey === 'function'
+            ? window.mlService.hasApiKey()
+            : !!window.mlService.apiKey;
+
+        if (hasKey) {
+            try {
+                console.log('🤖 Using Hugging Face ML analysis');
+                const result = await window.mlService.analyzeContent(fallbackText);
+                return {
+                    sentiment: result?.sentiment?.sentiment || 'neutral',
+                    sentimentConfidence: result?.sentiment?.confidence ?? 0.5,
+                    topic: result?.topic?.topic || 'other',
+                    topicConfidence: result?.topic?.confidence ?? 0.5,
+                    topicAlternatives: result?.topic?.alternatives || []
+                };
+            } catch (error) {
+                console.error('🤖 HF analysis failed:', error);
+            }
+        } else {
+            console.log('🤖 HF API key missing, skipping Hugging Face analysis');
         }
     }
 
-    console.log('🤖 localML unavailable, using fallback heuristics');
+    console.log('🤖 Hugging Face unavailable, using fallback heuristics');
     const fallbackSentiment = getSentimentFallback(fallbackText);
     const fallbackTopic = getTopicFallback(fallbackText);
 

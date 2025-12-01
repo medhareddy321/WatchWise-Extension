@@ -3,7 +3,7 @@ console.log('🤖 WatchWise: ML Service loaded');
 
 class MLService {
     constructor() {
-        this.apiBase = 'https://api-inference.huggingface.co/models';
+        this.apiBase = 'https://router.huggingface.co/hf-inference/models';
         this.apiKey = null; // Will be set by user
         this.cache = new Map(); // Simple in-memory cache
         this.cacheExpiry = 24 * 60 * 60 * 1000; // 24 hours
@@ -11,7 +11,8 @@ class MLService {
         // Hugging Face models
         this.models = {
             sentiment: 'cardiffnlp/twitter-roberta-base-sentiment-latest',
-            topic: 'facebook/bart-large-mnli',
+            // Stronger zero-shot for topic classification
+            topic: 'MoritzLaurer/mDeBERTa-v3-base-mnli-xnli',
             emotion: 'j-hartmann/emotion-english-distilroberta-base'
         };
         
@@ -38,6 +39,38 @@ class MLService {
     // Check if we have API key
     hasApiKey() {
         return this.apiKey && this.apiKey.length > 0;
+    }
+
+    // Fetch via background worker to avoid CORS in content scripts
+    async fetchViaBackground(url, options) {
+        // If running in extension context with runtime messaging, proxy through the service worker
+        if (typeof chrome !== 'undefined' && chrome.runtime?.id && chrome.runtime.sendMessage) {
+            return new Promise((resolve, reject) => {
+                chrome.runtime.sendMessage(
+                    { action: 'hfFetch', url, options },
+                    (response) => {
+                        if (chrome.runtime.lastError) {
+                            reject(new Error(chrome.runtime.lastError.message));
+                            return;
+                        }
+                        if (!response || response.success === false) {
+                            reject(new Error(response?.error || 'Background fetch failed'));
+                            return;
+                        }
+                        resolve({
+                            ok: response.ok,
+                            status: response.status,
+                            text: response.text
+                        });
+                    }
+                );
+            });
+        }
+
+        // Fallback: direct fetch (e.g., tests or non-extension contexts)
+        const resp = await fetch(url, options);
+        const text = await resp.text();
+        return { ok: resp.ok, status: resp.status, text };
     }
 
     // Get cache key for text
@@ -73,7 +106,7 @@ class MLService {
             throw new Error('Hugging Face API key not set');
         }
 
-        const response = await fetch(`${this.apiBase}/${model}`, {
+        const response = await this.fetchViaBackground(`${this.apiBase}/${model}`, {
             method: 'POST',
             headers: {
                 'Authorization': `Bearer ${this.apiKey}`,
@@ -89,11 +122,10 @@ class MLService {
         });
 
         if (!response.ok) {
-            const errorText = await response.text();
-            throw new Error(`API call failed: ${response.status} - ${errorText}`);
+            throw new Error(`API call failed: ${response.status} - ${response.text}`);
         }
 
-        return await response.json();
+        return JSON.parse(response.text);
     }
 
     // Analyze sentiment using Hugging Face
@@ -143,13 +175,43 @@ class MLService {
         try {
             // Use BART for zero-shot classification
             const candidateLabels = [
-                'music', 'food', 'news', 'entertainment', 'education', 
-                'lifestyle', 'gaming', 'technology', 'sports', 'travel',
-                'fashion', 'beauty', 'health', 'fitness', 'business',
-                'science', 'art', 'comedy', 'drama', 'documentary'
+                // Parental/safety-oriented labels
+                'violence',
+                'sexual content',
+                'self-harm',
+                'drugs',
+                'alcohol',
+                'gambling',
+                'hate or offensive',
+                'conspiracy',
+                // General content categories
+                'politics',
+                'news',
+                'education',
+                'kids',
+                'family',
+                'gaming',
+                'music',
+                'sports',
+                'fitness',
+                'beauty and fashion',
+                'food and cooking',
+                'travel',
+                'finance',
+                'business',
+                'ads or sponsored',
+                'pranks',
+                'challenges',
+                'technology',
+                'science',
+                'vlog',
+                'reviews',
+                'comedy',
+                'movies and tv',
+                'art'
             ];
 
-            const response = await fetch(`${this.apiBase}/${this.models.topic}`, {
+            const response = await this.fetchViaBackground(`${this.apiBase}/${this.models.topic}`, {
                 method: 'POST',
                 headers: {
                     'Authorization': `Bearer ${this.apiKey}`,
@@ -164,22 +226,29 @@ class MLService {
             });
 
             if (!response.ok) {
-                const errorText = await response.text();
-                throw new Error(`API call failed: ${response.status} - ${errorText}`);
+                throw new Error(`API call failed: ${response.status} - ${response.text}`);
             }
 
-            const result = await response.json();
+            const result = JSON.parse(response.text);
+
+            // Support both flat and nested HF response shapes
+            const labels = result?.labels || result?.[0]?.labels;
+            const scores = result?.scores || result?.[0]?.scores;
+
+            if (!labels || !scores || labels.length === 0 || scores.length === 0) {
+                throw new Error('Topic response missing labels/scores');
+            }
 
             // Process result
-            const topic = result.labels[0];
-            const confidence = result.scores[0];
+            const topic = labels[0];
+            const confidence = scores[0];
             
             const analysis = {
                 topic: topic,
                 confidence: confidence,
-                alternatives: result.labels.slice(1, 4).map((label, index) => ({
+                alternatives: labels.slice(1, 4).map((label, index) => ({
                     topic: label,
-                    confidence: result.scores[index + 1]
+                    confidence: scores[index + 1]
                 })),
                 raw: result
             };
@@ -270,12 +339,17 @@ class MLService {
 
     // Map Hugging Face sentiment labels to our format
     mapSentimentLabel(hfLabel) {
+        if (!hfLabel) return 'neutral';
+        const label = hfLabel.toUpperCase();
         const mapping = {
             'LABEL_0': 'negative',
             'LABEL_1': 'neutral', 
-            'LABEL_2': 'positive'
+            'LABEL_2': 'positive',
+            'NEGATIVE': 'negative',
+            'NEUTRAL': 'neutral',
+            'POSITIVE': 'positive'
         };
-        return mapping[hfLabel] || 'neutral';
+        return mapping[label] || 'neutral';
     }
 
     // Fallback sentiment analysis (original keyword-based)

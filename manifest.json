@@ -10,7 +10,9 @@
   ],
   
   "host_permissions": [
-    "https://www.youtube.com/*"
+    "https://www.youtube.com/*",
+    "https://api-inference.huggingface.co/*",
+    "https://router.huggingface.co/*"
   ],
   
   "background": {
@@ -20,7 +22,7 @@
   "content_scripts": [
     {
       "matches": ["https://www.youtube.com/*"],
-      "js": ["shared/local-ml.js", "content/simple-monitor.js"],
+      "js": ["shared/ml-service.js", "content/simple-monitor.js"],
       "run_at": "document_end"
     }
   ],

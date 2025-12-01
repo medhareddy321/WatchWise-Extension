@@ -1,4 +1,7 @@
 /* WatchWise Popup Styles */
+
+
+*, *::before, *::after { box-sizing: border-box; }
 body {
     width: 350px;
     min-height: 400px;
@@ -159,6 +162,9 @@ header h1 {
 }
 
 .setup-card input {
+    box-sizing: border-box;
+    display: block;
+    max-width: 100%;  
     width: 100%;
     padding: 8px 12px;
     border: 1px solid rgba(255, 255, 255, 0.3);
@@ -173,7 +179,7 @@ header h1 {
     color: rgba(255, 255, 255, 0.6);
 }
 
-.setup-card input:focus {
+.setup-card input:focus {  
     outline: none;
     border-color: rgba(255, 255, 255, 0.5);
     background: rgba(255, 255, 255, 0.15);

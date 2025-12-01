@@ -1,0 +1,91 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>WatchWise Parent Portal</title>
+  <link rel="stylesheet" href="style.css" />
+</head>
+<body>
+  <div class="page">
+    <header class="hero">
+      <div class="hero-text">
+        <p class="eyebrow">Parent view</p>
+        <h1>WatchWise Parent Portal</h1>
+        <p class="subtitle">Review your child’s viewing patterns, sentiment balance, and flagged categories at a glance.</p>
+        <div class="actions">
+          <label class="upload-btn">
+            <input type="file" id="fileInput" accept=".json" />
+            Upload export
+          </label>
+          <button id="demoData" class="ghost">Use sample data</button>
+        </div>
+      </div>
+      <div class="badge-card">
+        <div class="badge-title">Status</div>
+        <div class="badge-status" id="syncStatus">Offline review</div>
+        <p class="badge-note">Real-time sync coming next. For now, upload the latest export.</p>
+      </div>
+    </header>
+
+    <section class="grid summary">
+      <div class="card pastel peach">
+        <div class="card-head">
+          <span class="label">Today’s Activity</span>
+        </div>
+        <div class="highlight-number" id="todayCount">0</div>
+        <p class="muted">Videos today</p>
+        <div class="divider"></div>
+        <div class="metric-row">
+          <div>
+            <div class="metric-label">Watch time</div>
+            <div class="metric-value" id="todayWatch">0s</div>
+          </div>
+          <div>
+            <div class="metric-label">Recent uploads</div>
+            <div class="metric-value" id="videoTotal">0 total</div>
+          </div>
+        </div>
+      </div>
+
+      <div class="card pastel lilac">
+        <div class="card-head">
+          <span class="label">Sentiment balance</span>
+        </div>
+        <div class="bar">
+          <div class="bar-positive" id="positiveBar" style="width: 50%"></div>
+          <div class="bar-negative" id="negativeBar" style="width: 50%"></div>
+        </div>
+        <div class="sentiment-counts">
+          <span>😊 <strong id="positiveCount">0</strong></span>
+          <span>😔 <strong id="negativeCount">0</strong></span>
+        </div>
+        <p class="muted small">Positive vs. negative labels from recent videos.</p>
+      </div>
+
+      <div class="card pastel mint">
+        <div class="card-head">
+          <span class="label">Flagged topics</span>
+        </div>
+        <div id="flagsList" class="list">No flagged categories</div>
+      </div>
+    </section>
+
+    <section class="card full">
+      <div class="card-header">
+        <div>
+          <p class="label">Recent videos</p>
+          <h3>Today’s viewing</h3>
+        </div>
+        <div class="filters">
+          <span class="pill ghost">Filter by sentiment</span>
+          <span class="pill ghost">Filter by topic</span>
+        </div>
+      </div>
+      <div id="videoList" class="video-list">Upload an export JSON to view activity.</div>
+    </section>
+  </div>
+
+  <script src="app.js"></script>
+</body>
+</html>
