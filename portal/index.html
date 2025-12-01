@@ -12,21 +12,42 @@
       <div class="hero-text">
         <p class="eyebrow">Parent view</p>
         <h1>WatchWise Parent Portal</h1>
-        <p class="subtitle">Review your child’s viewing patterns, sentiment balance, and flagged categories at a glance.</p>
-        <div class="actions">
-          <label class="upload-btn">
-            <input type="file" id="fileInput" accept=".json" />
-            Upload export
-          </label>
-          <button id="demoData" class="ghost">Use sample data</button>
+        <p class="subtitle">Live dashboard that stays synced with your child’s WatchWise extension.</p>
+        <div class="actions live">
+          <div class="badge-status" id="syncStatus">Connecting…</div>
+          <p class="muted small" id="badgeNote">Listening for updates from Firestore.</p>
         </div>
       </div>
       <div class="badge-card">
         <div class="badge-title">Status</div>
-        <div class="badge-status" id="syncStatus">Offline review</div>
-        <p class="badge-note">Real-time sync coming next. For now, upload the latest export.</p>
+        <div class="badge-status" id="syncBadge">Waiting</div>
+        <p class="badge-note" id="badgeSecondary">Powered by Firestore real-time updates.</p>
       </div>
     </header>
+
+    <section class="card full auth-card" id="authCard" style="display:none;">
+      <h3>Parent login</h3>
+      <div class="auth-row">
+        <button id="googleBtn">Sign in with Google</button>
+      </div>
+      <p class="muted small" id="authStatus"></p>
+    </section>
+
+    <section class="card full settings-card">
+      <div class="settings-row">
+        <div>
+          <p class="label">Watch time reminder</p>
+          <input id="watchLimit" type="number" min="1" placeholder="Minutes" style="width:120px;" />
+          <button id="saveWatchLimit">Save</button>
+          <span class="muted small" id="watchLimitStatus"></span>
+        </div>
+        <div>
+          <p class="label">Account</p>
+          <button id="signOutBtn" class="ghost">Sign out</button>
+        </div>
+      </div>
+      <div id="watchReminder" class="reminder" style="display:none;">⏰ Watch time exceeded your limit.</div>
+    </section>
 
     <section class="grid summary">
       <div class="card pastel peach">
@@ -71,6 +92,27 @@
       </div>
     </section>
 
+    <section class="grid summary">
+      <div class="card full">
+        <div class="card-header">
+          <div>
+            <p class="label">Category mix</p>
+            <h3>Topics today</h3>
+          </div>
+        </div>
+        <div id="categoryStats" class="list">No data yet</div>
+      </div>
+      <div class="card full">
+        <div class="card-header">
+          <div>
+            <p class="label">Emotion mix</p>
+            <h3>Emotions today</h3>
+          </div>
+        </div>
+        <div id="emotionStats" class="list">No data yet</div>
+      </div>
+    </section>
+
     <section class="card full">
       <div class="card-header">
         <div>
@@ -82,10 +124,10 @@
           <span class="pill ghost">Filter by topic</span>
         </div>
       </div>
-      <div id="videoList" class="video-list">Upload an export JSON to view activity.</div>
+      <div id="videoList" class="video-list" style="max-height:420px; overflow-y:auto;">Upload an export JSON to view activity.</div>
     </section>
   </div>
 
-  <script src="app.js"></script>
+  <script type="module" src="app.js"></script>
 </body>
 </html>

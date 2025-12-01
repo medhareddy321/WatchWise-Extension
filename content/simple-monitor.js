@@ -190,6 +190,23 @@ function collectHashtagsFromContainers(containers) {
     return Array.from(tags);
 }
 
+async function fetchCaptionsSnippet(videoId) {
+    if (!videoId) return '';
+    const url = `https://www.youtube.com/api/timedtext?lang=en&v=${encodeURIComponent(videoId)}`;
+    try {
+        const resp = await fetch(url);
+        if (!resp.ok) return '';
+        const xml = await resp.text();
+        const doc = new DOMParser().parseFromString(xml, 'text/xml');
+        const nodes = Array.from(doc.getElementsByTagName('text'));
+        const text = nodes.map(n => n.textContent || '').join(' ');
+        return text.replace(/\s+/g, ' ').trim().substring(0, 600);
+    } catch (err) {
+        console.warn('🎯 WatchWise: Failed to fetch captions', err);
+        return '';
+    }
+}
+
 
 function buildRawTextFromParts(parts) {
     return parts
@@ -379,7 +396,9 @@ async function analyzeContentLocally(text, videoInfo) {
                     sentimentConfidence: result?.sentiment?.confidence ?? 0.5,
                     topic: result?.topic?.topic || 'other',
                     topicConfidence: result?.topic?.confidence ?? 0.5,
-                    topicAlternatives: result?.topic?.alternatives || []
+                    topicAlternatives: result?.topic?.alternatives || [],
+                    emotion: result?.emotion?.emotion || 'neutral',
+                    emotionConfidence: result?.emotion?.confidence ?? 0.5
                 };
             } catch (error) {
                 console.error('🤖 HF analysis failed:', error);
@@ -419,13 +438,16 @@ async function processVideoAsync(videoInfo, watchDurationMs) {
 
         console.log('🤖 Processing video with ML analysis:', title, '(isShort:', videoInfo.isShort, ')');
 
+        const captionsSnippet = await fetchCaptionsSnippet(videoInfo.videoId);
         const combinedText = videoInfo.rawText || buildRawTextFromParts([
             title,
             videoInfo.description,
-            videoInfo.hashtags
+            videoInfo.hashtags,
+            captionsSnippet
         ]);
-        const analysisText = combinedText || title || videoInfo.url || '';
-        const analysis = await analyzeContentLocally(analysisText, videoInfo);
+    const analysisText = combinedText || title || videoInfo.url || '';
+    console.log('🤖 ML input text length:', analysisText.length, 'text:', analysisText.substring(0, 500));
+    const analysis = await analyzeContentLocally(analysisText, videoInfo);
 
         const videoData = {
             id: videoInfo.videoId,
@@ -435,10 +457,12 @@ async function processVideoAsync(videoInfo, watchDurationMs) {
             description: videoInfo.description || null,
             hashtags: videoInfo.hashtags || [],
             rawText: analysisText,
-            sentiment: analysis.sentiment || 'neutral',
-            sentimentConfidence: analysis.sentimentConfidence ?? 0.5,
-            topic: analysis.topic || (videoInfo.isShort ? 'entertainment' : 'other'),
-            topicConfidence: analysis.topicConfidence ?? 0.5,
+        sentiment: analysis.sentiment || 'neutral',
+        sentimentConfidence: analysis.sentimentConfidence ?? 0.5,
+        topic: analysis.topic || (videoInfo.isShort ? 'entertainment' : 'other'),
+        topicConfidence: analysis.topicConfidence ?? 0.5,
+        emotion: analysis.emotion || 'neutral',
+        emotionConfidence: analysis.emotionConfidence ?? 0.5,
             topicAlternatives: analysis.topicAlternatives || [],
             parentOverrides: {
                 sentiment: videoInfo.parentOverrides?.sentiment || null,

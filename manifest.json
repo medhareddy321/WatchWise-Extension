@@ -12,8 +12,10 @@
   "host_permissions": [
     "https://www.youtube.com/*",
     "https://api-inference.huggingface.co/*",
-    "https://router.huggingface.co/*"
+    "https://router.huggingface.co/*",
+    "https://firestore.googleapis.com/*"
   ],
+  
   
   "background": {
     "service_worker": "background/simple-worker.js"

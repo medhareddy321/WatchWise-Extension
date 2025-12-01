@@ -7,15 +7,71 @@ class MLService {
         this.apiKey = null; // Will be set by user
         this.cache = new Map(); // Simple in-memory cache
         this.cacheExpiry = 24 * 60 * 60 * 1000; // 24 hours
-        
+
         // Hugging Face models
         this.models = {
             sentiment: 'cardiffnlp/twitter-roberta-base-sentiment-latest',
-            // Stronger zero-shot for topic classification
-            topic: 'MoritzLaurer/mDeBERTa-v3-base-mnli-xnli',
             emotion: 'j-hartmann/emotion-english-distilroberta-base'
         };
-        
+        // Topic model order (single stable model to avoid 404s)
+        this.topicModels = [
+            'facebook/bart-large-mnli'
+        ];
+
+        this.safetyLabels = [
+            'nsfw',
+            'sexual content',
+            'pornography',
+            'adult themes',
+            'violence',
+            'graphic violence',
+            'self-harm',
+            'suicide',
+            'drugs',
+            'alcohol',
+            'gambling',
+            'hate speech',
+            'harassment',
+            'weapons',
+            'conspiracy'
+        ];
+
+        this.generalLabels = [
+            'news',
+            'politics',
+            'education',
+            'kids',
+            'family',
+            'gaming',
+            'music',
+            'sports',
+            'fitness',
+            'beauty and fashion',
+            'food and cooking',
+            'travel',
+            'finance',
+            'business',
+            'ads or sponsored',
+            'pranks',
+            'challenges',
+            'technology',
+            'science',
+            'vlog',
+            'reviews',
+            'comedy',
+            'movies and tv',
+            'art',
+            'health',
+            'religion',
+            'environment',
+            'history',
+            'other'
+        ];
+
+        this.maxSentimentChars = 480;
+        this.maxTopicChars = 400;
+        this.maxEmotionChars = 480;
+
         this.init();
     }
 
@@ -100,47 +156,68 @@ class MLService {
         });
     }
 
-    // Make API call to Hugging Face
-    async makeApiCall(model, text) {
+        // Make API call to Hugging Face with a quick retry and enforced truncation
+    async makeApiCall(model, text, bodyOverrides = {}) {
         if (!this.hasApiKey()) {
             throw new Error('Hugging Face API key not set');
         }
 
-        const response = await this.fetchViaBackground(`${this.apiBase}/${model}`, {
-            method: 'POST',
-            headers: {
-                'Authorization': `Bearer ${this.apiKey}`,
-                'Content-Type': 'application/json'
+        const payload = {
+            inputs: text,
+            options: {
+                wait_for_model: true,
+                use_cache: true
             },
-            body: JSON.stringify({
-                inputs: text,
-                options: {
-                    wait_for_model: true,
-                    use_cache: true
-                }
-            })
-        });
+            ...bodyOverrides
+        };
 
-        if (!response.ok) {
-            throw new Error(`API call failed: ${response.status} - ${response.text}`);
+        let lastError = null;
+        const attempts = 2;
+
+        for (let i = 1; i <= attempts; i++) {
+            try {
+                const response = await this.fetchViaBackground(`${this.apiBase}/${model}`, {
+                    method: 'POST',
+                    headers: {
+                        'Authorization': `Bearer ${this.apiKey}`,
+                        'Content-Type': 'application/json'
+                    },
+                    body: JSON.stringify(payload)
+                });
+
+                if (!response.ok) {
+                    throw new Error(`API call failed: ${response.status} - ${response.text}`);
+                }
+
+                try {
+                    return JSON.parse(response.text);
+                } catch (parseErr) {
+                    throw new Error(`Invalid JSON response: ${response.text?.substring(0, 200) || ''}`);
+                }
+            } catch (error) {
+                lastError = error;
+                if (i === attempts) break;
+                await new Promise(res => setTimeout(res, 400));
+            }
         }
 
-        return JSON.parse(response.text);
+        throw lastError || new Error('Unknown HF error');
     }
 
     // Analyze sentiment using Hugging Face
     async analyzeSentiment(text) {
         console.log('🤖 Analyzing sentiment for:', text.substring(0, 50));
-        
+        const cleaned = this.prepareText(text, this.maxSentimentChars);
+
         // Check cache first
-        const cached = this.getFromCache(text, 'sentiment');
+        const cached = this.getFromCache(cleaned, 'sentiment');
         if (cached) {
             return cached;
         }
 
         try {
-            const result = await this.makeApiCall(this.models.sentiment, text);
-            
+            const result = await this.makeApiCall(this.models.sentiment, cleaned);
+
             // Process result
             const sentiment = result[0][0];
             const analysis = {
@@ -150,134 +227,117 @@ class MLService {
             };
 
             // Save to cache
-            this.saveToCache(text, 'sentiment', analysis);
-            
+            this.saveToCache(cleaned, 'sentiment', analysis);
+
             console.log('🤖 Sentiment result:', analysis);
             return analysis;
-            
+
         } catch (error) {
             console.error('🤖 Sentiment analysis error:', error);
             // Fallback to basic analysis
-            return this.fallbackSentimentAnalysis(text);
+            return this.fallbackSentimentAnalysis(cleaned);
         }
     }
 
     // Analyze topic using Hugging Face
     async analyzeTopic(text) {
         console.log('🤖 Analyzing topic for:', text.substring(0, 50));
-        
+        const cleaned = this.prepareText(text, this.maxTopicChars);
+
         // Check cache first
-        const cached = this.getFromCache(text, 'topic');
+        const cached = this.getFromCache(cleaned, 'topic');
         if (cached) {
             return cached;
         }
 
-        try {
-            // Use BART for zero-shot classification
-            const candidateLabels = [
-                // Parental/safety-oriented labels
-                'violence',
-                'sexual content',
-                'self-harm',
-                'drugs',
-                'alcohol',
-                'gambling',
-                'hate or offensive',
-                'conspiracy',
-                // General content categories
-                'politics',
-                'news',
-                'education',
-                'kids',
-                'family',
-                'gaming',
-                'music',
-                'sports',
-                'fitness',
-                'beauty and fashion',
-                'food and cooking',
-                'travel',
-                'finance',
-                'business',
-                'ads or sponsored',
-                'pranks',
-                'challenges',
-                'technology',
-                'science',
-                'vlog',
-                'reviews',
-                'comedy',
-                'movies and tv',
-                'art'
-            ];
+        const candidateLabels = [...this.safetyLabels, ...this.generalLabels];
+        let lastError = null;
 
-            const response = await this.fetchViaBackground(`${this.apiBase}/${this.models.topic}`, {
-                method: 'POST',
-                headers: {
-                    'Authorization': `Bearer ${this.apiKey}`,
-                    'Content-Type': 'application/json'
-                },
-                body: JSON.stringify({
-                    inputs: text,
+        const modelsToTry = this.topicModels.filter(m => !m.toLowerCase().includes('fever'));
+
+        for (const model of modelsToTry) {
+            try {
+                const result = await this.makeApiCall(model, cleaned, {
                     parameters: {
-                        candidate_labels: candidateLabels
+                        candidate_labels: candidateLabels,
+                        multi_label: true
                     }
-                })
-            });
+                });
 
-            if (!response.ok) {
-                throw new Error(`API call failed: ${response.status} - ${response.text}`);
+                const parsed = this.parseTopicResult(result);
+                if (!parsed || parsed.length === 0) {
+                    throw new Error('Topic response missing labels/scores');
+                }
+
+                // Build sorted pairs
+                const paired = parsed.sort((a, b) => b.confidence - a.confidence);
+
+                // Safety override if any safety label crosses threshold
+                const safetyHit = paired.find(
+                    p => this.safetyLabels.includes(p.topic) && p.confidence >= 0.6
+                );
+
+                const primary = safetyHit || paired[0];
+
+                // Confidence floor
+                if (!safetyHit && (primary?.confidence ?? 0) < 0.25) {
+                    console.warn('🤖 Topic low confidence; defaulting to other', primary);
+                    return {
+                        topic: 'other',
+                        confidence: primary?.confidence ?? 0.0,
+                        alternatives: paired.slice(0, 3),
+                        safetyOverride: false,
+                        raw: result,
+                        lowConfidence: true
+                    };
+                }
+
+                const analysis = {
+                    topic: primary.topic,
+                    confidence: primary.confidence,
+                    alternatives: paired.slice(1, 4),
+                    safetyOverride: !!safetyHit,
+                    raw: result,
+                    model
+                };
+
+                // Save to cache only on successful, non-fallback result
+                this.saveToCache(cleaned, 'topic', analysis);
+
+                console.log('🤖 Topic result:', analysis);
+                return analysis;
+            } catch (err) {
+                lastError = err;
+                console.error(`🤖 Topic model failed (${model})`, err);
+                // Try next model
+                continue;
             }
-
-            const result = JSON.parse(response.text);
-
-            // Support both flat and nested HF response shapes
-            const labels = result?.labels || result?.[0]?.labels;
-            const scores = result?.scores || result?.[0]?.scores;
-
-            if (!labels || !scores || labels.length === 0 || scores.length === 0) {
-                throw new Error('Topic response missing labels/scores');
-            }
-
-            // Process result
-            const topic = labels[0];
-            const confidence = scores[0];
-            
-            const analysis = {
-                topic: topic,
-                confidence: confidence,
-                alternatives: labels.slice(1, 4).map((label, index) => ({
-                    topic: label,
-                    confidence: scores[index + 1]
-                })),
-                raw: result
-            };
-
-            // Save to cache
-            this.saveToCache(text, 'topic', analysis);
-            
-            console.log('🤖 Topic result:', analysis);
-            return analysis;
-            
-        } catch (error) {
-            console.error('🤖 Topic analysis error:', error);
-            // Fallback to basic analysis
-            return this.fallbackTopicAnalysis(text);
         }
+
+        console.error('🤖 Topic analysis error:', lastError);
+        // On failure, return neutral topic instead of forcing fallback safety labels
+        return {
+            topic: 'other',
+            confidence: 0.0,
+            alternatives: [],
+            safetyOverride: false,
+            raw: { error: String(lastError || 'unknown') }
+        };
     }
 
     // Analyze emotion using Hugging Face
     async analyzeEmotion(text) {
         console.log('🤖 Analyzing emotion for:', text.substring(0, 50));
-        
+        const cleaned = this.prepareText(text, this.maxEmotionChars);
+
         // Check cache first
-        const cached = this.getFromCache(text, 'emotion');
+        const cached = this.getFromCache(cleaned, 'emotion');
         if (cached) {
             return cached;
         }
 
         try {
-            const result = await this.makeApiCall(this.models.emotion, text);
+            const result = await this.makeApiCall(this.models.emotion, cleaned);
             
             // Process result
             const emotions = result[0];
@@ -293,7 +353,7 @@ class MLService {
             };
 
             // Save to cache
-            this.saveToCache(text, 'emotion', analysis);
+            this.saveToCache(cleaned, 'emotion', analysis);
             
             console.log('🤖 Emotion result:', analysis);
             return analysis;
@@ -320,8 +380,10 @@ class MLService {
                 this.analyzeEmotion(text)
             ]);
 
+            const enrichedSentiment = this.mergeSentimentAndEmotion(sentiment, emotion);
+
             const analysis = {
-                sentiment: sentiment,
+                sentiment: enrichedSentiment,
                 topic: topic,
                 emotion: emotion,
                 timestamp: Date.now(),
@@ -350,6 +412,66 @@ class MLService {
             'POSITIVE': 'positive'
         };
         return mapping[label] || 'neutral';
+    }
+
+    mergeSentimentAndEmotion(sentiment, emotion) {
+        const emotionMap = {
+            anger: 'negative',
+            fear: 'negative',
+            disgust: 'negative',
+            sadness: 'negative',
+            joy: 'positive',
+            surprise: 'neutral',
+            neutral: 'neutral',
+            love: 'positive'
+        };
+
+        const emotionSentiment = emotionMap[(emotion?.emotion || '').toLowerCase()];
+        const useEmotion = emotion?.confidence >= 0.35 && emotionSentiment;
+
+        const finalSentiment = useEmotion ? emotionSentiment : sentiment.sentiment;
+        const finalConfidence = useEmotion ? emotion.confidence : sentiment.confidence;
+
+        return {
+            sentiment: finalSentiment,
+            confidence: finalConfidence,
+            primaryEmotion: emotion?.emotion || 'neutral',
+            emotionConfidence: emotion?.confidence ?? 0.0,
+            raw: {
+                sentiment,
+                emotion
+            }
+        };
+    }
+
+    prepareText(text, limit) {
+        const cleaned = String(text || '')
+            .replace(/\s+/g, ' ')
+            .trim();
+        if (cleaned.length <= limit) return cleaned;
+        return cleaned.substring(0, limit);
+    }
+
+    parseTopicResult(result) {
+        // Support nested {labels, scores} or array of {label, score}
+        const labels = result?.labels || result?.[0]?.labels;
+        const scores = result?.scores || result?.[0]?.scores;
+
+        if (labels && scores && labels.length && scores.length) {
+            return labels.map((label, idx) => ({
+                topic: (label || '').toLowerCase(),
+                confidence: scores[idx] || 0
+            }));
+        }
+
+        if (Array.isArray(result) && result[0]?.label) {
+            return result.map(entry => ({
+                topic: (entry.label || '').toLowerCase(),
+                confidence: entry.score || 0
+            }));
+        }
+
+        return [];
     }
 
     // Fallback sentiment analysis (original keyword-based)
@@ -392,19 +514,43 @@ class MLService {
     // Fallback topic analysis (original keyword-based)
     fallbackTopicAnalysis(text) {
         console.log('🤖 Using fallback topic analysis');
-        
+
+        const lowerText = text.toLowerCase();
+
+        const safetyKeywords = [
+            { topic: 'self-harm', keywords: ['self harm', 'suicide', 'kill myself', 'end my life'] },
+            { topic: 'violence', keywords: ['kill', 'murder', 'blood', 'gore', 'violent'] },
+            { topic: 'sexual content', keywords: ['nsfw', 'sex', 'porn', 'xxx', 'explicit', 'onlyfans'] },
+            { topic: 'hate speech', keywords: ['hate speech', 'racist', 'bigot', 'slur'] },
+            { topic: 'drugs', keywords: ['drug', 'cocaine', 'heroin', 'meth', 'weed'] },
+            { topic: 'alcohol', keywords: ['alcohol', 'beer', 'vodka', 'whiskey'] },
+            { topic: 'gambling', keywords: ['casino', 'betting', 'poker', 'gambling'] }
+        ];
+
+        for (const entry of safetyKeywords) {
+            if (entry.keywords.some(k => lowerText.includes(k))) {
+                return {
+                    topic: entry.topic,
+                    confidence: 0.9,
+                    alternatives: [],
+                    safetyOverride: true,
+                    raw: { fallback: true, matched: entry.keywords.filter(k => lowerText.includes(k)) }
+                };
+            }
+        }
+
         const topics = {
             'music': ['music', 'song', 'album', 'artist', 'band', 'concert', 'live', 'performance', 'lyrics'],
-            'food': ['food', 'cooking', 'recipe', 'kitchen', 'chef', 'restaurant', 'meal', 'pizza', 'burger'],
+            'food and cooking': ['food', 'cooking', 'recipe', 'kitchen', 'chef', 'restaurant', 'meal', 'pizza', 'burger', 'noodles'],
             'news': ['news', 'breaking', 'update', 'politics', 'election', 'government', 'economy'],
             'entertainment': ['funny', 'comedy', 'meme', 'joke', 'laugh', 'hilarious', 'prank', 'reaction'],
-            'education': ['tutorial', 'learn', 'how to', 'explained', 'course', 'lesson', 'study', 'programming'],
+            'education': ['tutorial', 'learn', 'how to', 'explained', 'course', 'lesson', 'study', 'programming', 'interview roadmap'],
             'lifestyle': ['vlog', 'daily', 'routine', 'life', 'travel', 'fashion', 'beauty', 'fitness'],
-            'gaming': ['game', 'gaming', 'play', 'stream', 'minecraft', 'fortnite', 'call of duty']
+            'gaming': ['game', 'gaming', 'play', 'stream', 'minecraft', 'fortnite', 'call of duty'],
+            'sports': ['sport', 'football', 'soccer', 'basketball', 'nba', 'nfl'],
+            'technology': ['tech', 'technology', 'software', 'ai', 'machine learning']
         };
-        
-        const lowerText = text.toLowerCase();
-        
+
         for (const [topic, keywords] of Object.entries(topics)) {
             if (keywords.some(keyword => lowerText.includes(keyword))) {
                 return {
@@ -415,7 +561,7 @@ class MLService {
                 };
             }
         }
-        
+
         return {
             topic: 'other',
             confidence: 0.5,

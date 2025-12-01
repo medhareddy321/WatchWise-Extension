@@ -1,5 +1,5 @@
 WatchWise: YouTube Mindful-Viewing Companion
-Technical Report — Updated (Nov 2025)
+Technical Report — Updated (Dec 2025)
 
 Version: 1.1.1
 Project Type: Chrome Extension (Manifest V3)
@@ -12,11 +12,12 @@ Domain: Human–AI Interaction, Digital Wellness, Privacy-Preserving Analytics
 WatchWise instruments YouTube (including Shorts) to help people understand and reshape their viewing habits. The extension now:
 
 - Tracks every watch session with real watch time (pause/resume aware) and deduplicated metadata per video.
-- Classifies each session with tiered ML (heuristics → Hugging Face transformers → on-device BERT/MiniLM once assets ship).
+- Captures sentiment, topic, and emotion (with confidences) per video; parents can override labels from the portal and stats recompute live.
+- Streams data to Firestore in real time for a parent portal with Google sign-in, watch-time reminders, overrides, and category/emotion summaries.
 - Provides live stats in the popup plus a richer dashboard for historical review, export, and data clearing.
 - Keeps all records in `chrome.storage.local` so no viewing history leaves the device unless the user opts into Hugging Face inference.
 
-The Hugging Face path is the **currently deployed advanced classifier**. The BERT/ONNX pipeline is implemented in code but still waiting on bundled models and topic centroids before we can flip the default.
+The Hugging Face path is the **only advanced classifier currently in use** (with keyword heuristics as the fallback). The older on-device BERT/MiniLM path is not active.
 
 ---
 
@@ -32,10 +33,10 @@ The Hugging Face path is the **currently deployed advanced classifier**. The BER
 ### 2.2 Component Map
 | Component | Source | Responsibilities |
 | --- | --- | --- |
-| Content monitor | `content/simple-monitor.js` | DOM scraping, watch-time tracking, heuristics/local ML invocation, nudges, message dispatch |
-| Service worker | `background/simple-worker.js` | Storage initialization, dedupe, stats aggregation, export + daily rollover |
+| Content monitor | `content/simple-monitor.js` | DOM scraping, watch-time tracking, heuristics/local ML invocation, nudges, message dispatch, emotion capture |
+| Service worker | `background/simple-worker.js` | Storage initialization, dedupe, stats aggregation, export + daily rollover, Firestore sync |
 | ML modules | `shared/ml-service.js`, `shared/local-ml.js` | Hugging Face client + caching, ONNX Runtime Web wrapper |
-| Surfaces | `popup/simple-popup.js`, `dashboard/dashboard.js` | At-a-glance stats, API-key management, historical reporting, export/clear controls |
+| Surfaces | `popup/simple-popup.js`, `dashboard/dashboard.js`, `portal/index.html` | At-a-glance stats, AI-key management, historical reporting, export/clear controls, parent overrides, watch reminders, category/emotion mixes |
 
 ---
 
@@ -60,9 +61,9 @@ The Hugging Face path is the **currently deployed advanced classifier**. The BER
    - Flushes progress on URL change, `pagehide`, and `visibilitychange`; also runs periodic flushes every 15 seconds.
 
 5. **ML Handoff**
-   - Builds `rawText = title + description + hashtags`.
+   - Builds `rawText = title + description + hashtags + captions (best-effort timedtext fetch)`.
    - Calls `window.localML.analyzeContent` when the ONNX bundle is loaded; otherwise falls back to heuristic sentiment/topic classifiers embedded in the monitor.
-   - The resulting payload includes `sentiment`, `topic`, `topicConfidence`, `sentimentConfidence`, `topicAlternatives`, and the captured `watchDurationMs`.
+   - The resulting payload includes `sentiment`, `topic`, `emotion`, confidences, alternatives, and the captured `watchDurationMs`.
 
 6. **Nudges & UX**
    - After every successful `storeVideo`, checks `todayStats.negative` and spawns a lightweight DOM notification every third negative video encouraging a break.
@@ -115,6 +116,14 @@ The Hugging Face path is the **currently deployed advanced classifier**. The BER
 - Offers `Refresh`, `Export`, and `Clear data` actions. Clearing reinitializes storage to the default contract.
 - Uses inline notifications for feedback and ensures the UI remains responsive on narrow viewports.
 
+### 5.3 Parent Portal (`portal/index.html`, `portal/app.js`, `portal/style.css`)
+- Live Firestore listener on `children/{childId}`; renders instantly without manual upload.
+- Google sign-in (Firebase Auth) gates the dashboard.
+- Watch-time reminder: parent sets a minutes limit; portal shows an alert when today’s watch time exceeds it.
+- Category mix and emotion mix cards (pill-style stat grids).
+- Flagged topics render as chips; recent videos list is scrollable.
+- Overrides: per-video “Override” lets parents edit sentiment/topic/emotion; saves back to Firestore and recomputes stats.
+
 ---
 
 ## 6. ML Pipeline
@@ -127,28 +136,18 @@ The Hugging Face path is the **currently deployed advanced classifier**. The BER
 ### 6.2 Tier 2 — Hugging Face Transformers (Current Advanced Path)
 - Live today via `shared/ml-service.js` once the user enters an API key.
 - Models:
-  - **Sentiment**: `cardiffnlp/twitter-roberta-base-sentiment-latest` — RoBERTa-base trained on millions of English tweets (negative/neutral/positive).
-  - **Topics**: `facebook/bart-large-mnli` — MultiNLI-trained BART used for zero-shot topic classification with a curated candidate label list (music, news, education, gaming, etc.).
-  - **Emotion**: `j-hartmann/emotion-english-distilroberta-base` — DistilRoBERTa fine-tuned on GoEmotions for joy, anger, fear, sadness, and related states.
+  - **Sentiment**: `cardiffnlp/twitter-roberta-base-sentiment-latest` (negative/neutral/positive).
+  - **Topics**: `facebook/bart-large-mnli` (multi-label zero-shot over curated topic+safety labels).
+  - **Emotion**: `j-hartmann/emotion-english-distilroberta-base` (GoEmotions set).
 - Caching: Responses are cached per `(model, text)` for 24 hours to reduce quota usage.
-- Known inefficiencies:
-  - Latency per classification (network round-trips).
+- Known constraints:
+  - Latency per classification (network round-trips) and HF router variability.
   - Rate limits and quotas on free Hugging Face tokens.
   - Dependency on third-party availability and user-provided credentials.
-  - Text leaves the device, which some users dislike even though no identifiers are sent.
+  - Text leaves the device, though no identifiers are sent.
 
-### 6.3 Tier 3 — Local BERT via ONNX Runtime Web (In Progress)
-- `shared/local-ml.js` ships:
-  - Dynamic import of `shared/vendor/onnxruntime-web.min.mjs` for WASM inference.
-  - DistilBERT sentiment model (`distilbert-sst2.onnx`) expecting SST-2 style binary outputs.
-  - MiniLM embedding model (`all-minilm-l6-v2.onnx`) used to compute sentence embeddings.
-  - WordPiece tokenizer backed by `models/bert-vocab.json`.
-  - Topic classifier scaffolding based on cosine similarity against `TOPIC_CENTROIDS` (currently zero placeholders).
-- Missing pieces before GA:
-  - Bundle ONNX + vocab artifacts under `/models` and expose them through `web_accessible_resources`.
-  - Populate `TOPIC_CENTROIDS` with real embeddings derived from labeled samples.
-  - Finalize popup toggles to choose between local vs. cloud inference.
-  - Performance/latency testing on low-power devices.
+### 6.3 Tier 3 — Local BERT (Paused)
+- Earlier plan to ship ONNX (DistilBERT/MiniLM) is paused. Current stack is heuristics + Hugging Face only.
 
 ---
 
@@ -169,7 +168,8 @@ The Hugging Face path is the **currently deployed advanced classifier**. The BER
 1. **Ship local BERT assets** — Package ONNX models + vocab, hook them into the build, and confirm `simple-monitor.js` prefers the local path when files exist.
 2. **Topic centroid calibration** — Create labeled prompts per topic, embed with MiniLM, and bake them into `TOPIC_CENTROIDS`.
 3. **AI mode controls** — Expose toggles in the popup/dashboard so users can force heuristic/local/cloud modes and view which tier handled each classification.
-4. **Focus/Wellness features** — Explore topic blocking or “focus mode” plus weekly summaries built on the stored `videos`.
-5. **Better error surfacing** — Surface ML/monitor failures in the popup (not just DevTools logs) so users know when heuristics are in effect.
+4. **Focus/Wellness features** — Expand reminders (watch-time, negative streaks) and add weekly summaries built on stored `videos`.
+5. **Better error surfacing** — Surface ML/monitor failures in the popup/portal so users know when heuristics are in effect.
+6. **Portal polish** — Additional data viz (histograms, trends), fine-grained overrides, and auth provider hardening.
 
 WatchWise already delivers end-to-end mindful viewing analytics with Hugging Face as the advanced classifier. The remaining engineering focus is landing the on-device DistilBERT/MiniLM stack and adding richer wellness workflows on top of the existing monitors and storage infrastructure.

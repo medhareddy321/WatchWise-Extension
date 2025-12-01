@@ -1,6 +1,30 @@
 // WatchWise Background Worker (all features merged)
 console.log('🎯 WatchWise: Background worker loaded');
 
+// ----- Remote sync config -----
+const FIREBASE_SYNC = {
+  projectId: 'watchwise-parent',
+  apiKey: 'AIzaSyDVCTf_XrPhtF-x9J1InFHtI0mRceNN3Js',
+  childId: 'child-1',
+  enabled: true
+};
+
+function isFirestoreConfigured() {
+  return (
+    FIREBASE_SYNC.enabled &&
+    FIREBASE_SYNC.projectId &&
+    FIREBASE_SYNC.apiKey &&
+    FIREBASE_SYNC.childId &&
+    !FIREBASE_SYNC.projectId.includes('YOUR_') &&
+    !FIREBASE_SYNC.apiKey.includes('YOUR_')
+  );
+}
+
+function getFirestoreDocumentUrl() {
+  if (!isFirestoreConfigured()) return null;
+  return `https://firestore.googleapis.com/v1/projects/${FIREBASE_SYNC.projectId}/databases/(default)/documents/children/${FIREBASE_SYNC.childId}?key=${FIREBASE_SYNC.apiKey}`;
+}
+
 // ----- Helpers -----
 
 // Default shape for today's stats
@@ -164,6 +188,9 @@ async function handleClearData(sendResponse) {
 
     console.log('[clearData] Storage cleared and reset');
     sendResponse({ success: true });
+    syncStatsToFirestore('clearData').catch(err =>
+      console.error('[sync] Failed after clear', err)
+    );
   } catch (error) {
     console.error('[clearData] Error:', error);
     sendResponse({ success: false, error: error.message });
@@ -193,6 +220,9 @@ async function handleStoreVideo(videoData, sendResponse) {
 
     console.log('[storeVideo] Stored video:', videoData.id);
     sendResponse({ success: true });
+    syncStatsToFirestore('storeVideo').catch(err =>
+      console.error('[sync] Failed after storeVideo', err)
+    );
   } catch (error) {
     console.error('[storeVideo] Error:', error);
     sendResponse({ success: false, error: error.message });
@@ -305,3 +335,63 @@ async function resetDailyStats() {
 
 // Start the daily reset scheduler as soon as the worker loads
 scheduleDailyReset();
+
+// ----- Firestore sync (REST) -----
+
+async function buildExportPayload() {
+  const result = await chrome.storage.local.get(['videos', 'todayStats']);
+  const videos = result.videos || [];
+  const todayStats = result.todayStats || getDefaultTodayStats();
+
+  return {
+    exportDate: new Date().toISOString(),
+    videos,
+    todayStats,
+    totalVideos: videos.length
+  };
+}
+
+async function syncStatsToFirestore(reason = 'unspecified') {
+  const url = getFirestoreDocumentUrl();
+  if (!url) {
+    console.warn('[sync] Firestore config missing, skip sync');
+    return;
+  }
+
+  const exportData = await buildExportPayload();
+  const body = {
+    name: `projects/${FIREBASE_SYNC.projectId}/databases/(default)/documents/children/${FIREBASE_SYNC.childId}`,
+    fields: {
+      data: { stringValue: JSON.stringify(exportData) },
+      updatedAt: { timestampValue: new Date().toISOString() }
+    }
+  };
+
+  const maxAttempts = 3;
+  for (let attempt = 1; attempt <= maxAttempts; attempt++) {
+    try {
+      const response = await fetch(url, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(body)
+      });
+
+      if (!response.ok) {
+        const text = await response.text();
+        throw new Error(`HTTP ${response.status} ${response.statusText}: ${text}`);
+      }
+
+      console.log(`[sync] Success (reason: ${reason})`);
+      return;
+    } catch (error) {
+      console.error(`[sync] Attempt ${attempt} failed`, error);
+      if (attempt === maxAttempts) {
+        console.error('[sync] Giving up after max retries');
+        return;
+      }
+      await new Promise(resolve =>
+        setTimeout(resolve, Math.min(1000 * 2 ** (attempt - 1), 8000))
+      );
+    }
+  }
+}

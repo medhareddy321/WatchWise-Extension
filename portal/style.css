@@ -5,7 +5,7 @@
   --panel: #ffffff;
   --text: #1c1c28;
   --muted: #6c7082;
-  --border: #e5e7ef;
+  --border: #e3e6f0;
   --accent: #7b61ff;
   --accent-soft: rgba(123, 97, 255, 0.1);
   --peach: #ffb48a;
@@ -13,6 +13,7 @@
   --mint: #d7f5e9;
   --green: #2db47d;
   --red: #ef476f;
+  --badge: #0f172a;
 }
 
 *,
@@ -103,6 +104,8 @@ body {
   border-radius: 16px;
   padding: 14px 16px;
   box-shadow: 0 14px 40px rgba(0, 0, 0, 0.05);
+  display: grid;
+  gap: 8px;
 }
 
 .badge-title {
@@ -115,6 +118,10 @@ body {
 .badge-status {
   font-weight: 700;
   font-size: 18px;
+  color: var(--badge);
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
 }
 
 .badge-note {
@@ -140,6 +147,7 @@ body {
 
 .card.full {
   margin-top: 16px;
+  padding: 18px;
 }
 
 .card-head {
@@ -230,6 +238,29 @@ body {
   font-size: 14px;
 }
 
+.stat-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(160px, 1fr));
+  gap: 10px;
+}
+
+.stat-pill {
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  padding: 10px 12px;
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  background: #f8f9ff;
+  font-weight: 600;
+  color: var(--text);
+}
+
+.stat-pill .count {
+  color: var(--muted);
+  font-weight: 500;
+}
+
 .card-header {
   display: flex;
   justify-content: space-between;
@@ -260,11 +291,12 @@ body {
   display: flex;
   flex-direction: column;
   gap: 10px;
+  padding-right: 6px;
 }
 
 .video-item {
   display: grid;
-  grid-template-columns: 1fr auto auto;
+  grid-template-columns: 1fr auto auto auto;
   gap: 12px;
   align-items: center;
   padding: 12px 14px;
@@ -309,8 +341,62 @@ body {
   background: rgba(123, 97, 255, 0.08);
 }
 
+.chip.emotion {
+  border-color: rgba(255, 191, 71, 0.5);
+  background: rgba(255, 191, 71, 0.12);
+}
+
 .muted {
   color: var(--muted);
+}
+
+.reminder {
+  margin-top: 8px;
+  padding: 10px 12px;
+  background: #fff5f5;
+  color: #b42318;
+  border: 1px solid #fed7d7;
+  border-radius: 10px;
+  font-weight: 600;
+}
+
+.auth-card .auth-row {
+  display: flex;
+  gap: 10px;
+  flex-wrap: wrap;
+}
+
+.auth-card button {
+  padding: 10px 14px;
+  border-radius: 10px;
+  border: 1px solid var(--border);
+  background: var(--accent);
+  color: #fff;
+  cursor: pointer;
+  font-weight: 600;
+}
+
+.settings-card .settings-row {
+  display: flex;
+  justify-content: space-between;
+  gap: 10px;
+  flex-wrap: wrap;
+}
+
+.settings-card input {
+  padding: 10px 12px;
+  border-radius: 10px;
+  border: 1px solid var(--border);
+}
+
+.settings-card button {
+  padding: 10px 14px;
+  border-radius: 10px;
+  border: 1px solid var(--border);
+  background: var(--accent);
+  color: #fff;
+  cursor: pointer;
+  font-weight: 600;
 }
 
 @media (max-width: 860px) {
