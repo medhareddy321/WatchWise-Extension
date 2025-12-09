@@ -150,6 +150,31 @@ body {
   padding: 18px;
 }
 
+.notice {
+  border-radius: 14px;
+  padding: 12px 14px;
+  margin-bottom: 12px;
+  border: 1px solid var(--border);
+  background: #fff;
+  box-shadow: 0 10px 30px rgba(0, 0, 0, 0.05);
+}
+
+.notice.warning {
+  border-color: #fed7aa;
+  background: #fff7ed;
+  color: #9a3412;
+}
+
+.notice-title {
+  font-weight: 700;
+  margin-bottom: 4px;
+}
+
+.notice-body {
+  font-size: 14px;
+  color: var(--text);
+}
+
 .card-head {
   display: flex;
   justify-content: space-between;
@@ -324,6 +349,9 @@ body {
   font-size: 12px;
   color: var(--text);
   background: #fff;
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
 }
 
 .chip.positive {
@@ -344,6 +372,11 @@ body {
 .chip.emotion {
   border-color: rgba(255, 191, 71, 0.5);
   background: rgba(255, 191, 71, 0.12);
+}
+
+.confidence {
+  font-size: 11px;
+  color: var(--muted);
 }
 
 .muted {

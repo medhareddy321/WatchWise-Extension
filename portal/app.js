@@ -338,6 +338,9 @@ function renderVideos(videos) {
       const topic = v.topic || 'other';
       const dur = formatWatchTime(v.watchDurationMs || 0);
       const emotion = (v.emotion || 'neutral').toLowerCase();
+      const topicConf = v.topicConfidence != null ? `${Math.round((v.topicConfidence || 0) * 100)}%` : '';
+      const sentimentConf = v.sentimentConfidence != null ? `${Math.round((v.sentimentConfidence || 0) * 100)}%` : '';
+      const emotionConf = v.emotionConfidence != null ? `${Math.round((v.emotionConfidence || 0) * 100)}%` : '';
       return `
         <div class="video-item" data-video-id="${escapeHtml(v.id)}">
           <div class="video-title">${escapeHtml(v.title || 'Untitled')}</div>
@@ -346,9 +349,9 @@ function renderVideos(videos) {
             <span class="muted">${new Date(v.timestamp).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}</span>
           </div>
           <div class="video-meta">
-            <span class="chip ${sentiment === 'positive' ? 'positive' : sentiment === 'negative' ? 'negative' : ''}">${emojiForSentiment(sentiment)} ${sentiment}</span>
-            <span class="chip flag">${topic}</span>
-            <span class="chip emotion">${emotion}</span>
+            <span class="chip ${sentiment === 'positive' ? 'positive' : sentiment === 'negative' ? 'negative' : ''}">${emojiForSentiment(sentiment)} ${sentiment}${sentimentConf ? `<span class="confidence">${sentimentConf}</span>` : ''}</span>
+            <span class="chip flag">${topic}${topicConf ? `<span class="confidence">${topicConf}</span>` : ''}</span>
+            <span class="chip emotion">${emotion}${emotionConf ? `<span class="confidence">${emotionConf}</span>` : ''}</span>
             <button class="ghost override-btn" data-video-id="${escapeHtml(v.id)}">Override</button>
           </div>
         </div>
