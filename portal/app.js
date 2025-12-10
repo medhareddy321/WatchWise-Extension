@@ -77,7 +77,7 @@ function init() {
   googleBtn.addEventListener('click', handleGoogleLogin);
   signOutBtn.addEventListener('click', handleSignOut);
   saveWatchLimitBtn.addEventListener('click', saveWatchLimit);
-  videoListEl.addEventListener('click', handleOverrideClick);
+  videoListEl.addEventListener('click', handleVideoListClick);
 
   onAuthStateChanged(auth, user => {
     if (user) {
@@ -339,8 +339,6 @@ function renderVideos(videos) {
       const dur = formatWatchTime(v.watchDurationMs || 0);
       const emotion = (v.emotion || 'neutral').toLowerCase();
       const topicConf = v.topicConfidence != null ? `${Math.round((v.topicConfidence || 0) * 100)}%` : '';
-      const sentimentConf = v.sentimentConfidence != null ? `${Math.round((v.sentimentConfidence || 0) * 100)}%` : '';
-      const emotionConf = v.emotionConfidence != null ? `${Math.round((v.emotionConfidence || 0) * 100)}%` : '';
       return `
         <div class="video-item" data-video-id="${escapeHtml(v.id)}">
           <div class="video-title">${escapeHtml(v.title || 'Untitled')}</div>
@@ -349,15 +347,32 @@ function renderVideos(videos) {
             <span class="muted">${new Date(v.timestamp).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}</span>
           </div>
           <div class="video-meta">
-            <span class="chip ${sentiment === 'positive' ? 'positive' : sentiment === 'negative' ? 'negative' : ''}">${emojiForSentiment(sentiment)} ${sentiment}${sentimentConf ? `<span class="confidence">${sentimentConf}</span>` : ''}</span>
+            <span class="chip ${sentiment === 'positive' ? 'positive' : sentiment === 'negative' ? 'negative' : ''}">${emojiForSentiment(sentiment)} ${sentiment}</span>
             <span class="chip flag">${topic}${topicConf ? `<span class="confidence">${topicConf}</span>` : ''}</span>
-            <span class="chip emotion">${emotion}${emotionConf ? `<span class="confidence">${emotionConf}</span>` : ''}</span>
+            <span class="chip emotion">${emotion}</span>
             <button class="ghost override-btn" data-video-id="${escapeHtml(v.id)}">Override</button>
+            <button class="ghost danger delete-btn" data-video-id="${escapeHtml(v.id)}">Delete</button>
           </div>
         </div>
       `;
     })
     .join('');
+}
+
+async function handleVideoListClick(event) {
+  const deleteBtn = event.target.closest('.delete-btn');
+  if (deleteBtn) {
+    const videoId = deleteBtn.dataset.videoId;
+    const confirmed = confirm('Delete this video entry from today?');
+    if (!confirmed) return;
+    await deleteVideoById(videoId);
+    return;
+  }
+
+  const overrideBtn = event.target.closest('.override-btn');
+  if (overrideBtn) {
+    await handleOverrideClick(overrideBtn.dataset.videoId);
+  }
 }
 
 function emojiForSentiment(sentiment) {
@@ -381,10 +396,7 @@ function recomputeTodayStats(videos) {
   return stats;
 }
 
-async function handleOverrideClick(event) {
-  const btn = event.target.closest('.override-btn');
-  if (!btn) return;
-  const videoId = btn.dataset.videoId;
+async function handleOverrideClick(videoId) {
   const video = currentData.videos.find(v => v.id === videoId);
   if (!video) return;
 
@@ -397,6 +409,15 @@ async function handleOverrideClick(event) {
   video.topic = newTopic.toLowerCase();
   video.emotion = newEmotion.toLowerCase();
 
+  currentData.todayStats = recomputeTodayStats(currentData.videos);
+  await saveDataToFirestore();
+  applyExportData(currentData);
+}
+
+async function deleteVideoById(videoId) {
+  const before = currentData.videos.length;
+  currentData.videos = currentData.videos.filter(v => v.id !== videoId);
+  if (currentData.videos.length === before) return;
   currentData.todayStats = recomputeTodayStats(currentData.videos);
   await saveDataToFirestore();
   applyExportData(currentData);

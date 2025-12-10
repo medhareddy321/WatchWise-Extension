@@ -409,6 +409,13 @@ body {
   font-weight: 600;
 }
 
+.ghost.danger {
+  background: #fff;
+  color: #b42318;
+  border-color: #fca5a5;
+}
+
+
 .settings-card .settings-row {
   display: flex;
   justify-content: space-between;

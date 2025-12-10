@@ -173,3 +173,12 @@ The Hugging Face path is the **only advanced classifier currently in use** (with
 6. **Portal polish** — Additional data viz (histograms, trends), fine-grained overrides, and auth provider hardening.
 
 WatchWise already delivers end-to-end mindful viewing analytics with Hugging Face as the advanced classifier. The remaining engineering focus is landing the on-device DistilBERT/MiniLM stack and adding richer wellness workflows on top of the existing monitors and storage infrastructure.
+
+---
+
+## 9. Operational Notes (Demo & Safety)
+
+- **Demo setup:** Load the extension via `chrome://extensions` (Load unpacked → repo root). Open YouTube to generate data; use the popup to set a Hugging Face token if cloud ML is desired. Open `portal/index.html` locally for the parent view (requires valid Firebase config in `portal/app.js`).
+- **Secrets caution:** The current `portal/app.js` contains a Firebase web API key. If the repo is public, rotate/restrict the key in Google Cloud and limit origins/APIs; avoid committing private credentials. Prefer using an untracked `firebase-config.js` locally.
+- **Data handling:** All viewing data stays in `chrome.storage.local` unless the user opts into Hugging Face calls or Firestore sync via the portal.
+- **Submission packaging:** Zip the repo excluding `.git/`, logs, and `node_modules` if present to keep the bundle lean; include README and this report.
