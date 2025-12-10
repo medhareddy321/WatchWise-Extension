@@ -48,4 +48,4 @@ WatchWise is a Chrome extension that keeps YouTube watching mindful. It tracks v
 ## Run & test notes
 - No build step; all assets are plain JS/CSS/HTML.
 - Data is stored via `chrome.storage` (extension) and Firestore (portal). Hugging Face requires your API key.
-- To package for submission (from repo root): `zip -r submission.zip . -x "node_modules/*" ".git/*" ".DS_Store" "*.log" ".firebase/*"`; verify with `zip -sf submission.zip`.
+
