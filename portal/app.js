@@ -40,13 +40,13 @@ const emotionStatsEl = document.getElementById('emotionStats');
 
 // Firebase config (live)
 const firebaseConfig = {
-  apiKey: 'AIzaSyDVCTf_XrPhtF-x9J1InFHtI0mRceNN3Js',
+  apiKey: '',
   authDomain: 'watchwise-parent.firebaseapp.com',
   projectId: 'watchwise-parent',
   storageBucket: 'watchwise-parent.firebasestorage.app',
-  messagingSenderId: '619612994480',
-  appId: '1:619612994480:web:537bed0efb38b05682b475',
-  measurementId: 'G-E2KEDGWTF6'
+  messagingSenderId: '',
+  appId: '-',
+  measurementId: '-'
 };
 const CHILD_ID = 'child-1';
 
